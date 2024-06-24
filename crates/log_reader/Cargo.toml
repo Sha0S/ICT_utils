@@ -1,0 +1,16 @@
+[package]
+name = "ICT_log_reader"
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ICT_log_file = { path = "..\\log_file"}
+
+chrono = "0.4.38"
+eframe = "0"
+egui = "0"
+egui_extras = "0.27.2"
+env_logger = "0"
+image = "0.25.1"

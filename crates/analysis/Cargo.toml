@@ -1,0 +1,23 @@
+[package]
+name = "ICT_analysis"
+version = "0.0.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+eframe = "0"
+egui = "0"
+egui_extras = { version = "0", features = ["all_loaders", "datepicker"] }
+egui_plot = "0"
+egui-dropdown = "0"
+image = { version = "0", features = ["png"] }
+env_logger = "0"
+log = "0"
+rfd = "0"
+chrono = "0"
+umya-spreadsheet = "1"
+rust_xlsxwriter = { version = "0.68.0", features = ["chrono"] }
+
+ICT_log_file = { path = "..\\log_file"}
+ICT_config = { path = "..\\config"}
