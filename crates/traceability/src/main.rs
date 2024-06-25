@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Check if it is a golden sample, if it is then return 'GS'.
     let golden_samples: Vec<String> = load_gs_list(exe_path.with_file_name(GOLDEN));
-    
+
     if golden_samples.contains(&target) {
         println!("GS: Panel is a golden sample");
         return Ok(());

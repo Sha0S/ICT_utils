@@ -24,6 +24,9 @@ path = ".\\crates\\traceability\\src\\main.rs"
 name = "query"
 path = ".\\crates\\query\\src\\main.rs"
 
+[build-dependencies]
+embed-resource = "2.4.2"
+
 [dependencies]
 eframe = "0"
 egui = "0"
@@ -47,3 +50,4 @@ winauth = "0.0.5"
 
 ICT_log_file = { path = ".\\crates\\log_file"}
 ICT_config = { path = ".\\crates\\config"}
+

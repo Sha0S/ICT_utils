@@ -9,9 +9,9 @@ use ICT_log_file::*;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub(crate) fn load_icon() -> egui::IconData {
+fn load_icon() -> egui::IconData {
     let (icon_rgba, icon_width, icon_height) = {
-        let icon = include_bytes!("..\\icon.png");
+        let icon = include_bytes!("..\\..\\..\\icons\\log_reader.ico");
         let image = image::load_from_memory(icon)
             .expect("Failed to open icon path")
             .into_rgba8();

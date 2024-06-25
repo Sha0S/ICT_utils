@@ -1,7 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(non_snake_case)]
 
-use std::{ path::PathBuf, sync::{Arc, Mutex}};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use chrono::NaiveDateTime;
 use egui::Vec2;
@@ -15,6 +18,24 @@ use ICT_config::*;
 
 const PRODUCT_LIST: &str = ".\\products";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn load_icon() -> egui::IconData {
+    let (icon_rgba, icon_width, icon_height) = {
+        let icon = include_bytes!("..\\..\\..\\icons\\query.ico");
+        let image = image::load_from_memory(icon)
+            .expect("Failed to open icon path")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
+    };
+
+    egui::IconData {
+        rgba: icon_rgba,
+        width: icon_width,
+        height: icon_height,
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -59,7 +80,8 @@ async fn main() -> anyhow::Result<()> {
     // Start egui
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size(egui::Vec2 { x: 550.0, y: 250.0 }),
+            .with_inner_size(egui::Vec2 { x: 550.0, y: 250.0 })
+            .with_icon(load_icon()),
         ..Default::default()
     };
 
@@ -82,18 +104,23 @@ async fn connect(tib_config: tiberius::Config) -> anyhow::Result<Client<Compat<T
     Ok(client)
 }
 
-
 struct Panel {
     boards: u8,
     product: String,
     selected_pos: u8,
     serials: Vec<String>,
-    results: Vec<PanelResult>
+    results: Vec<PanelResult>,
 }
 
 impl Panel {
     fn empty() -> Self {
-        Panel { boards: 0, product: String::new(), selected_pos: 0, serials: Vec::new(), results: Vec::new()}
+        Panel {
+            boards: 0,
+            product: String::new(),
+            selected_pos: 0,
+            serials: Vec::new(),
+            results: Vec::new(),
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -101,32 +128,46 @@ impl Panel {
     }
 
     fn new(boards: u8, product: String) -> Self {
-        Panel { 
+        Panel {
             boards,
             product,
             selected_pos: 0,
             serials: Vec::new(),
-            results: Vec::new() }
+            results: Vec::new(),
+        }
     }
 
-    fn push(&mut self, position: u8, serial: String, station: String, result: String, date_time: NaiveDateTime, log_file_name: String) {
+    fn push(
+        &mut self,
+        position: u8,
+        serial: String,
+        station: String,
+        result: String,
+        date_time: NaiveDateTime,
+        log_file_name: String,
+    ) {
         if self.serials.is_empty() {
             self.serials = generate_serials(serial, position, self.boards);
             self.selected_pos = position;
             println!("Serials: {:#?}", self.serials);
         }
 
-        let mut results = vec![BoardResult::Unknown;self.boards as usize];
+        let mut results = vec![BoardResult::Unknown; self.boards as usize];
         results[position as usize] = if result == "Passed" {
-                BoardResult::Passed
-            } else {
-                BoardResult::Failed
-            };
+            BoardResult::Passed
+        } else {
+            BoardResult::Failed
+        };
 
-        let mut logs = vec![String::new(); self.boards as usize ];
+        let mut logs = vec![String::new(); self.boards as usize];
         logs[position as usize] = log_file_name;
 
-        self.results.push(PanelResult { time: date_time, station, results, logs })
+        self.results.push(PanelResult {
+            time: date_time,
+            station,
+            results,
+            logs,
+        })
     }
 
     fn add_result(&mut self, i: u8, result: String, log: String) {
@@ -150,14 +191,14 @@ struct PanelResult {
     time: NaiveDateTime,
     station: String,
     results: Vec<BoardResult>,
-    logs: Vec<String>
+    logs: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum BoardResult {
     Passed,
     Failed,
-    Unknown
+    Unknown,
 }
 
 impl BoardResult {
@@ -194,23 +235,32 @@ impl IctResultApp {
     fn open_log(&self, log: &str) {
         println!("Trying to open log: {log}");
         let path = PathBuf::from(log);
-    
+
         if path.exists() {
-            let res = std::process::Command::new(&self.log_viewer).arg(log).spawn();
-            println!("{:?}", res );
+            let res = std::process::Command::new(&self.log_viewer)
+                .arg(log)
+                .spawn();
+            println!("{:?}", res);
         } else {
             // try log_dir\\date_of_log\\log_filename
             let dir = path.parent().unwrap();
             let file = path.file_name().unwrap();
             let (_, date_str) = file.to_str().unwrap().split_once('-').unwrap();
-            let sub_dir = format!("20{}_{}_{}", &date_str[0..2],&date_str[2..4],&date_str[4..6]);
+            let sub_dir = format!(
+                "20{}_{}_{}",
+                &date_str[0..2],
+                &date_str[2..4],
+                &date_str[4..6]
+            );
             let mut final_path = dir.join(sub_dir);
             final_path.push(file);
 
             println!("Final path: {:?}", final_path);
             if final_path.exists() {
-                let res = std::process::Command::new(&self.log_viewer).arg(final_path).spawn();
-                println!("{:?}", res );
+                let res = std::process::Command::new(&self.log_viewer)
+                    .arg(final_path)
+                    .spawn();
+                println!("{:?}", res);
             }
         }
     }
@@ -345,65 +395,69 @@ impl eframe::App for IctResultApp {
                 ui.separator();
 
                 TableBuilder::new(ui)
-                .striped(true)
-                .column(Column::initial(40.0).resizable(true))
-                .column(Column::initial(250.0).resizable(true))  // Result
-                .column(Column::initial(100.0).resizable(true))  // Station
-                .column(Column::initial(150.0).resizable(true)) // Time
-                .header(20.0, |mut header| {
-                    header.col(|ui| {
-                        ui.label("#");
-                    });
-                    header.col(|ui| {
-                        ui.label("Results");
-                    });
-                    header.col(|ui| {
-                        ui.label("Station");
-                    });
-                    header.col(|ui| {
-                        ui.label("Time");
-                    });
-                })
-                .body(|mut body| {
-                    for (x, result) in panel_lock.results.iter().enumerate() {
-                        body.row(14.0, |mut row| {
-                            row.col(|ui| {
-                                ui.label(format!("{}", x+1));
-                            });
-                            row.col(|ui| {
-                                ui.spacing_mut().interact_size = Vec2::new(0.0, 0.0);
-                                ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
-
-                                ui.horizontal( |ui|
-                                    for (i, board) in result.results.iter().enumerate() {
-                                        if draw_result_box(ui, board, i == panel_lock.selected_pos as usize).clicked() {
-                                            self.open_log(&result.logs[i]);
-                                        }
-                                    }
-                                );
-                            });
-                            row.col(|ui| {
-                                ui.label(&result.station);
-                            });
-                            row.col(|ui| {
-                                ui.label(format!( "{}", result.time.format("%Y-%m-%d %H:%M")));
-                            });
+                    .striped(true)
+                    .column(Column::initial(40.0).resizable(true))
+                    .column(Column::initial(250.0).resizable(true)) // Result
+                    .column(Column::initial(100.0).resizable(true)) // Station
+                    .column(Column::initial(150.0).resizable(true)) // Time
+                    .header(20.0, |mut header| {
+                        header.col(|ui| {
+                            ui.label("#");
                         });
-                    }
-                });
+                        header.col(|ui| {
+                            ui.label("Results");
+                        });
+                        header.col(|ui| {
+                            ui.label("Station");
+                        });
+                        header.col(|ui| {
+                            ui.label("Time");
+                        });
+                    })
+                    .body(|mut body| {
+                        for (x, result) in panel_lock.results.iter().enumerate() {
+                            body.row(14.0, |mut row| {
+                                row.col(|ui| {
+                                    ui.label(format!("{}", x + 1));
+                                });
+                                row.col(|ui| {
+                                    ui.spacing_mut().interact_size = Vec2::new(0.0, 0.0);
+                                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
+
+                                    ui.horizontal(|ui| {
+                                        for (i, board) in result.results.iter().enumerate() {
+                                            if draw_result_box(
+                                                ui,
+                                                board,
+                                                i == panel_lock.selected_pos as usize,
+                                            )
+                                            .clicked()
+                                            {
+                                                self.open_log(&result.logs[i]);
+                                            }
+                                        }
+                                    });
+                                });
+                                row.col(|ui| {
+                                    ui.label(&result.station);
+                                });
+                                row.col(|ui| {
+                                    ui.label(format!("{}", result.time.format("%Y-%m-%d %H:%M")));
+                                });
+                            });
+                        }
+                    });
             }
         });
     }
 }
 
 fn draw_result_box(ui: &mut egui::Ui, result: &BoardResult, highlight: bool) -> egui::Response {
-    let desired_size = egui::vec2(10.0, 10.0); 
+    let desired_size = egui::vec2(10.0, 10.0);
 
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 
-    let rect = if highlight {
-        rect.expand(2.0)
-    } else { rect };
+    let rect = if highlight { rect.expand(2.0) } else { rect };
 
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);

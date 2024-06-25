@@ -81,7 +81,7 @@ pub struct Config {
     password: String,
     username: String,
 
-    log_reader: String
+    log_reader: String,
 }
 
 impl Config {
@@ -159,16 +159,20 @@ pub fn load_gs_list(path: PathBuf) -> Vec<String> {
     let mut list = Vec::new();
 
     if let Ok(fileb) = fs::read_to_string(path) {
-        list = fileb.lines().filter(|f| !f.starts_with('!')).map(|f| f.to_owned()).collect();
+        list = fileb
+            .lines()
+            .filter(|f| !f.starts_with('!'))
+            .map(|f| f.to_owned())
+            .collect();
     }
 
     list
 }
 
 pub fn get_pos_from_logname(log_file_name: &str) -> u8 {
-    let filename = log_file_name.split(&['/','\\']).last().unwrap();
+    let filename = log_file_name.split(&['/', '\\']).last().unwrap();
     let pos = filename.split_once('-').unwrap();
-    pos.0.parse::<u8>().unwrap()-1
+    pos.0.parse::<u8>().unwrap() - 1
 }
 
 pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
@@ -191,14 +195,13 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
 
 pub fn generate_serials(serial: String, position: u8, max_pos: u8) -> Vec<String> {
     let mut ret = Vec::with_capacity(max_pos as usize);
-    
-    let sn = serial[6..13].parse::<u32>().expect("ER: Parsing error") - position as u32; 
-    for i in sn..sn+max_pos as u32 {
+
+    let sn = serial[6..13].parse::<u32>().expect("ER: Parsing error") - position as u32;
+    for i in sn..sn + max_pos as u32 {
         let mut s = serial.clone();
         s.replace_range(6..13, &format!("{:07}", i));
         ret.push(s);
     }
-
 
     ret
 }
