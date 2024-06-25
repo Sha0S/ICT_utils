@@ -336,7 +336,8 @@ impl eframe::App for IctResultApp {
                                         let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
                                         let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
                                         
-                                        position = get_pos_from_logname(&log_file_name);
+                                         
+                                        position = get_pos_from_logname(&log_file_name).min(boards_on_panel);
 
                                         panel_lock.lock().unwrap().push(position, serial, station, result, date_time, log_file_name);
 
