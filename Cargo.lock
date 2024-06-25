@@ -66,6 +66,7 @@ dependencies = [
  "env_logger",
  "image 0.25.1",
  "once_cell",
+ "rfd",
  "tiberius",
  "tokio",
  "tokio-stream",
