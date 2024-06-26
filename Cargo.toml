@@ -24,9 +24,6 @@ path = ".\\crates\\traceability\\src\\main.rs"
 name = "query"
 path = ".\\crates\\query\\src\\main.rs"
 
-[build-dependencies]
-embed-resource = "2.4.2"
-
 [dependencies]
 eframe = "0"
 egui = "0"

@@ -11,7 +11,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn load_icon() -> egui::IconData {
     let (icon_rgba, icon_width, icon_height) = {
-        let icon = include_bytes!("..\\..\\..\\icons\\log_reader.ico");
+        let icon = include_bytes!("..\\..\\..\\icons\\search.png");
         let image = image::load_from_memory(icon)
             .expect("Failed to open icon path")
             .into_rgba8();

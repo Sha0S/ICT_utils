@@ -155,7 +155,7 @@ fn u64_to_timeframe(mut x: u64) -> String {
 
 fn load_icon() -> egui::IconData {
     let (icon_rgba, icon_width, icon_height) = {
-        let icon = include_bytes!("..\\..\\..\\icons\\analysis.ico");
+        let icon = include_bytes!("..\\..\\..\\icons\\info.png");
         let image = image::load_from_memory(icon)
             .expect("Failed to open icon path")
             .into_rgba8();
