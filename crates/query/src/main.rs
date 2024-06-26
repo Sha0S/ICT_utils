@@ -2,7 +2,7 @@
 #![allow(non_snake_case)]
 
 use std::{
-    fs, path::PathBuf, sync::{Arc, Mutex}
+    path::PathBuf, sync::{Arc, Mutex}
 };
 
 use chrono::NaiveDateTime;
@@ -14,6 +14,9 @@ use tokio_stream::StreamExt;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use ICT_config::*;
+
+mod scan_for_logs;
+use scan_for_logs::*;
 
 const PRODUCT_LIST: &str = ".\\products";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -184,55 +187,6 @@ impl Panel {
             }
         }
     }
-
-    fn save_all(&self) {
-        if let Some(output_dir) = rfd::FileDialog::new().pick_folder() {
-            for result in &self.results {
-                for log in &result.logs {
-                    println!("Trying to copy log: {log}");
-                    
-                    let path = PathBuf::from(log);
-                    let filename = path.file_name().unwrap();
-            
-                    if path.exists() {
-                        let mut out_path = output_dir.clone();
-                        out_path.push(filename);
-                        println!("Out path: {:?}", out_path);
-                        if fs::copy(path, out_path).is_ok() {
-                            println!("Success!")
-                        } else {
-                            println!("Failed!")
-                        }
-                    } else {
-                        // try log_dir\\date_of_log\\log_filename
-                        let dir = path.parent().unwrap();
-                        let file = path.file_name().unwrap();
-                        let (_, date_str) = file.to_str().unwrap().split_once('-').unwrap();
-                        let sub_dir = format!(
-                            "20{}_{}_{}",
-                            &date_str[0..2],
-                            &date_str[2..4],
-                            &date_str[4..6]
-                        );
-                        let mut final_path = dir.join(sub_dir);
-                        final_path.push(file);
-            
-                        println!("Final path: {:?}", final_path);
-                        if final_path.exists() {
-                            let mut out_path = output_dir.clone();
-                            out_path.push(filename);
-                            println!("Out path: {:?}", out_path);
-                            if fs::copy(final_path, out_path).is_ok() {
-                                println!("Success!")
-                            } else {
-                                println!("Failed!")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 struct PanelResult {
@@ -267,6 +221,7 @@ struct IctResultApp {
     panel: Arc<Mutex<Panel>>,
 
     DMC_input: String,
+    scan: ScanForLogs
 }
 
 impl IctResultApp {
@@ -277,39 +232,19 @@ impl IctResultApp {
             products: load_product_list(PRODUCT_LIST, true),
             panel: Arc::new(Mutex::new(Panel::empty())),
             DMC_input: String::new(),
+            scan: ScanForLogs::default()
         }
     }
 
     fn open_log(&self, log: &str) {
         println!("Trying to open log: {log}");
-        let path = PathBuf::from(log);
-
-        if path.exists() {
+        if let Some(path) = search_for_log(log) {
             let res = std::process::Command::new(&self.log_viewer)
-                .arg(log)
+                .arg(path)
                 .spawn();
             println!("{:?}", res);
         } else {
-            // try log_dir\\date_of_log\\log_filename
-            let dir = path.parent().unwrap();
-            let file = path.file_name().unwrap();
-            let (_, date_str) = file.to_str().unwrap().split_once('-').unwrap();
-            let sub_dir = format!(
-                "20{}_{}_{}",
-                &date_str[0..2],
-                &date_str[2..4],
-                &date_str[4..6]
-            );
-            let mut final_path = dir.join(sub_dir);
-            final_path.push(file);
-
-            println!("Final path: {:?}", final_path);
-            if final_path.exists() {
-                let res = std::process::Command::new(&self.log_viewer)
-                    .arg(final_path)
-                    .spawn();
-                println!("{:?}", res);
-            }
+            println!("Log not found!");
         }
     }
 }
@@ -322,8 +257,15 @@ impl eframe::App for IctResultApp {
 
                 let mut text_edit = egui::TextEdit::singleline(&mut self.DMC_input).desired_width(300.0).show(ui);
 
-                if ui.button("Save logs").clicked() && !self.panel.lock().unwrap().is_empty() {
-                    self.panel.lock().unwrap().save_all();
+                if ui.button("Logok keresése").clicked() && !self.panel.lock().unwrap().is_empty() {
+                    self.scan.clear();
+
+                    for result in &self.panel.lock().unwrap().results {
+                        self.scan.push(result.logs.iter().map(|f| f.as_str()).collect::<Vec<&str>>());
+                    }
+
+                    self.scan.set_selected(self.panel.lock().unwrap().selected_pos);
+                    self.scan.enable();
                 }
 
                 if text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && self.DMC_input.len() > 15 {
@@ -443,8 +385,8 @@ impl eframe::App for IctResultApp {
             let panel_lock = self.panel.lock().unwrap();
 
             if !panel_lock.is_empty() {
-                ui.label(format!("Product: {}", panel_lock.product));
-                ui.label(format!("Main DMC: {}", panel_lock.serials[0]));
+                ui.label(format!("Termék: {}", panel_lock.product));
+                ui.label(format!("Fő DMC: {}", panel_lock.serials[0]));
                 ui.separator();
 
                 TableBuilder::new(ui)
@@ -458,13 +400,13 @@ impl eframe::App for IctResultApp {
                             ui.label("#");
                         });
                         header.col(|ui| {
-                            ui.label("Results");
+                            ui.label("Eredmények");
                         });
                         header.col(|ui| {
-                            ui.label("Station");
+                            ui.label("Állomás");
                         });
                         header.col(|ui| {
-                            ui.label("Time");
+                            ui.label("Időpont");
                         });
                     })
                     .body(|mut body| {
@@ -502,6 +444,10 @@ impl eframe::App for IctResultApp {
                     });
             }
         });
+
+        if self.scan.enabled() {
+            self.scan.update(ctx);
+        }
     }
 }
 
