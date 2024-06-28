@@ -21,6 +21,10 @@ name = "traceability"
 path = ".\\crates\\traceability\\src\\main.rs"
 
 [[bin]]
+name = "traceability-server"
+path = ".\\crates\\traceability-server\\src\\main.rs"
+
+[[bin]]
 name = "query"
 path = ".\\crates\\query\\src\\main.rs"
 

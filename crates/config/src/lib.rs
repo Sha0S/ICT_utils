@@ -82,6 +82,7 @@ pub struct Config {
     username: String,
 
     log_reader: String,
+    MES_server: String,
 }
 
 impl Config {
@@ -121,6 +122,10 @@ impl Config {
                 if let Some(viewer) = app.get("VIEWER") {
                     c.log_reader = viewer.to_owned();
                 }
+
+                if let Some(server) = app.get("MES_SERVER") {
+                    c.MES_server = server.to_owned();
+                }
             }
         } else {
             return Err(anyhow::Error::msg(format!(
@@ -150,6 +155,10 @@ impl Config {
 
     pub fn get_log_reader(&self) -> &str {
         &self.log_reader
+    }
+
+    pub fn get_MES_server(&self) -> &str {
+        &self.MES_server
     }
 }
 

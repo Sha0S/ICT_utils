@@ -5095,6 +5095,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "traceability-client"
+version = "0.1.0"
+
+[[package]]
+name = "traceability-server"
+version = "0.1.0"
+dependencies = [
+ "ICT_config",
+ "anyhow",
+ "once_cell",
+ "tiberius",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
