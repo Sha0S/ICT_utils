@@ -4,8 +4,10 @@ use anyhow::bail;
 use std::{
     io,
     path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
+    sync::{
+        mpsc::{self, SyncSender},
+        Arc, Mutex,
+    },
 };
 use tiberius::{Client, Query};
 use tokio::{
@@ -13,6 +15,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 use tokio_util::compat::TokioAsyncWriteCompatExt;
+use tray_item::{IconSource, TrayItem};
 
 use ICT_config::*;
 
@@ -21,6 +24,15 @@ static GOLDEN: &str = "golden_samples";
 
 static LIMIT: i32 = 3;
 static LIMIT_2: i32 = 6;
+
+enum Message {
+    Quit,
+    Login,
+
+    Green,
+    Yellow,
+    Red,
+}
 
 struct App {
     config: Config,
@@ -47,7 +59,10 @@ impl Default for App {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let server = Arc::new(Mutex::new(App::default()));
+    let (tx, rx) = mpsc::sync_channel(1);
+
     let tcp_server = server.clone();
+    let tcp_tx = tx.clone();
 
     // spawn TCP thread
     tokio::spawn(async move {
@@ -62,25 +77,62 @@ async fn main() -> anyhow::Result<()> {
             .await
             .expect("ERR: can't connect to socket!");
 
+        tcp_tx.send(Message::Green).unwrap();
+
         loop {
             if let Ok((stream, _)) = listener.accept().await {
-                handle_client(tcp_server.clone(), stream).await;
+                handle_client(tcp_server.clone(), tcp_tx.clone(), stream).await;
             }
         }
     });
 
     // UI thread - to_do()
 
-    /*loop {
+    let mut tray =
+        TrayItem::new("ICT Traceability Server", IconSource::Resource("red-icon")).unwrap();
 
-    }*/
+    tray.add_label("ICT Traceability Server").unwrap();
 
-    std::thread::sleep(Duration::from_secs(20));
+    tray.inner_mut().add_separator().unwrap();
+
+    let login_tx = tx.clone();
+    tray.add_menu_item("Login", move || {
+        login_tx.send(Message::Login).unwrap();
+    })
+    .unwrap();
+
+    tray.inner_mut().add_separator().unwrap();
+
+    let quit_tx = tx.clone();
+    tray.add_menu_item("Quit", move || {
+        quit_tx.send(Message::Quit).unwrap();
+    })
+    .unwrap();
+
+    loop {
+        match rx.recv() {
+            Ok(Message::Quit) => {
+                println!("Quit");
+                break;
+            }
+            Ok(Message::Red) => {
+                tray.set_icon(IconSource::Resource("red-icon")).unwrap();
+            }
+            Ok(Message::Yellow) => {
+                tray.set_icon(IconSource::Resource("yellow-icon")).unwrap();
+            }
+            Ok(Message::Green) => tray.set_icon(IconSource::Resource("green-icon")).unwrap(),
+            Ok(Message::Login) => {
+                // to_do
+            }
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-async fn handle_client(server: Arc<Mutex<App>>, stream: TcpStream) {
+async fn handle_client(server: Arc<Mutex<App>>, tx: SyncSender<Message>, stream: TcpStream) {
     let response = loop {
         if let Ok(ready) = stream.ready(Interest::READABLE).await {
             if ready.is_readable() {
@@ -89,12 +141,13 @@ async fn handle_client(server: Arc<Mutex<App>>, stream: TcpStream) {
                     Ok(_) => {
                         let message = String::from_utf8_lossy(&buf).to_string();
                         println!("{message}");
-                        break process_message(server, message).await;
+                        break process_message(server, tx.clone(), message).await;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                         continue;
                     }
                     Err(e) => {
+                        tx.send(Message::Red).unwrap();
                         break format!("{e}");
                     }
                 }
@@ -115,6 +168,7 @@ async fn handle_client(server: Arc<Mutex<App>>, stream: TcpStream) {
                         continue;
                     }
                     Err(e) => {
+                        tx.send(Message::Red).unwrap();
                         println!("ERR: {e}");
                         break;
                     }
@@ -124,18 +178,27 @@ async fn handle_client(server: Arc<Mutex<App>>, stream: TcpStream) {
     }
 }
 
-async fn process_message(server: Arc<Mutex<App>>, input: String) -> String {
+async fn process_message(
+    server: Arc<Mutex<App>>,
+    tx: SyncSender<Message>,
+    input: String,
+) -> String {
     let tokens: Vec<&str> = input.split('|').map(|f| f.trim_end_matches('\0')).collect();
     println!("Tokens: {:?}", tokens);
     match tokens[0] {
         "START" => {
             if tokens.len() < 3 {
+                tx.send(Message::Yellow).unwrap();
                 String::from("Err: Missing token!")
             } else {
                 match start_board(server, tokens).await {
-                    Ok(x) => x,
+                    Ok(x) => {
+                        tx.send(Message::Green).unwrap();
+                        x
+                    }
 
                     Err(x) => {
+                        tx.send(Message::Red).unwrap();
                         format!("ERR: {x}")
                     }
                 }
@@ -144,7 +207,9 @@ async fn process_message(server: Arc<Mutex<App>>, input: String) -> String {
         "END" => {
             todo!()
         }
-        _ => String::from("ERR: Unknown token recieved!"),
+        _ => {
+            tx.send(Message::Red).unwrap();
+            String::from("ERR: Unknown token recieved!") }
     }
 }
 

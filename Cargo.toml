@@ -28,6 +28,9 @@ path = ".\\crates\\traceability-server\\src\\main.rs"
 name = "query"
 path = ".\\crates\\query\\src\\main.rs"
 
+[build-dependencies]
+embed-resource = "2.3"
+
 [dependencies]
 eframe = "0"
 egui = "0"
@@ -48,7 +51,9 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0", features = ["compat"] }
 tokio-stream = "0.1.15"
 winauth = "0.0.5"
+tray-item = "0.10.0"
 
 ICT_log_file = { path = ".\\crates\\log_file"}
 ICT_config = { path = ".\\crates\\config"}
+
 
