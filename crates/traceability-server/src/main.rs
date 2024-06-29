@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
         println!("Connecting to: {}", MES_server);
         let listener = TcpListener::bind(MES_server)
             .await
-            .expect("ERR: can't connect to socket!");
+            .expect("ER: can't connect to socket!");
 
         tcp_tx.send(Message::Green).unwrap();
 
@@ -189,7 +189,7 @@ async fn process_message(
         "START" => {
             if tokens.len() < 3 {
                 tx.send(Message::Yellow).unwrap();
-                String::from("Err: Missing token!")
+                String::from("ER: Missing token!")
             } else {
                 match start_board(server, tokens).await {
                     Ok(x) => {
@@ -199,7 +199,7 @@ async fn process_message(
 
                     Err(x) => {
                         tx.send(Message::Red).unwrap();
-                        format!("ERR: {x}")
+                        format!("ER: {x}")
                     }
                 }
             }
@@ -209,7 +209,7 @@ async fn process_message(
         }
         _ => {
             tx.send(Message::Red).unwrap();
-            String::from("ERR: Unknown token recieved!")
+            String::from("ER: Unknown token recieved!")
         }
     }
 }
