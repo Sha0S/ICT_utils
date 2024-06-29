@@ -28,15 +28,33 @@ static LIMIT_2: i32 = 6;
 
 enum Message {
     Quit,
-    Login,
+
+    LogIn,
+    LogOut,
+    OffLine,
 
     Green,
     Yellow,
     Red,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AppMode {
+    Enabled,
+    OffLine,
+    Override,
+}
+
+struct Panel {
+    dmc: String,
+    mode: AppMode,
+}
+
 struct App {
     config: Config,
+    mode: AppMode,
+    panels: Vec<Panel>,
+    logs: Vec<String>,
     golden_samples: Vec<String>,
 }
 
@@ -57,8 +75,54 @@ impl Default for App {
 
         App {
             config,
+            mode: AppMode::Enabled,
+            panels: Vec::new(),
+            logs: Vec::new(),
             golden_samples: load_gs_list(PathBuf::from(GOLDEN)),
         }
+    }
+}
+
+impl App {
+    fn push_panel(&mut self, dmc: &str) {
+        self.panels.push(Panel {
+            dmc: dmc.to_owned(),
+            mode: self.mode,
+        })
+    }
+
+    fn check_panel(&self, dmc: &str) -> bool {
+        if let Some(x) = self.panels.iter().find(|f| f.dmc == dmc) {
+            x.mode == self.mode
+        } else {
+            false
+        }
+    }
+
+    fn remove_panel(&mut self, dmc: &str) {
+        if let Some(x) = self.panels.iter().position(|f| f.dmc == dmc) {
+            let _ = self.panels.swap_remove(x);
+        }
+    }
+
+    fn push_log(&mut self, log: &str) {
+        self.logs.push(log.to_owned());
+    }
+
+    fn extract_logs(&mut self) -> Vec<String> {
+        let mut ret = Vec::new();
+
+        std::mem::swap(&mut ret, &mut self.logs);
+
+        ret
+    }
+
+    fn get_mode(&self) -> AppMode {
+        self.mode
+    }
+
+    fn set_mode(&mut self, mode: AppMode) {
+        self.mode = mode;
     }
 }
 
@@ -67,10 +131,9 @@ async fn main() -> anyhow::Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info");
     }
-    
+
     env_logger::init();
     info!("Starting server");
-
 
     let server = Arc::new(Mutex::new(App::default()));
     let (tx, rx) = mpsc::sync_channel(1);
@@ -111,7 +174,19 @@ async fn main() -> anyhow::Result<()> {
 
     let login_tx = tx.clone();
     tray.add_menu_item("Login", move || {
-        login_tx.send(Message::Login).unwrap();
+        login_tx.send(Message::LogIn).unwrap();
+    })
+    .unwrap();
+
+    let logout_tx = tx.clone();
+    tray.add_menu_item("Logout", move || {
+        logout_tx.send(Message::LogOut).unwrap();
+    })
+    .unwrap();
+
+    let offline_tx = tx.clone();
+    tray.add_menu_item("Off-line", move || {
+        offline_tx.send(Message::OffLine).unwrap();
     })
     .unwrap();
 
@@ -136,9 +211,23 @@ async fn main() -> anyhow::Result<()> {
                 tray.set_icon(IconSource::Resource("yellow-icon")).unwrap();
             }
             Ok(Message::Green) => tray.set_icon(IconSource::Resource("green-icon")).unwrap(),
-            Ok(Message::Login) => {
-                info!("Login attempted")
+            Ok(Message::LogIn) => {
+                info!("Login attempted");
+
                 // to_do
+                server.lock().unwrap().set_mode(AppMode::Override);
+            }
+            Ok(Message::LogOut) => {
+                info!("Logged out");
+
+                // to_do
+                server.lock().unwrap().set_mode(AppMode::Enabled);
+            }
+            Ok(Message::OffLine) => {
+                info!("Going off-line");
+
+                // to_do
+                server.lock().unwrap().set_mode(AppMode::OffLine);
             }
             _ => {}
         }
@@ -208,7 +297,7 @@ async fn process_message(
                 error!("Missing token after START!");
                 String::from("ER: Missing token!")
             } else {
-                match start_board(server, tokens).await {
+                match start_panel(server, tokens).await {
                     Ok(x) => {
                         tx.send(Message::Green).unwrap();
                         x
@@ -223,14 +312,30 @@ async fn process_message(
             }
         }
         "LOG" => {
-            todo!()
+            if let Some(log) = tokens.get(1) {
+                server.lock().unwrap().push_log(log);
+                String::from("OK")
+            } else {
+                tx.send(Message::Yellow).unwrap();
+                error!("Missing token after LOG!");
+                String::from("ER: Missing log token!")
+            }
         }
-        "END" => {
-            todo!()
-        }
+        "END" => match end_panel(server).await {
+            Ok(x) => {
+                tx.send(Message::Green).unwrap();
+                x
+            }
+
+            Err(x) => {
+                tx.send(Message::Red).unwrap();
+                error!("Failed to END panel: {x}");
+                format!("ER: {x}")
+            }
+        },
         _ => {
             tx.send(Message::Red).unwrap();
-            warn!("Unknown token recieved! {}",tokens[0] );
+            warn!("Unknown token recieved! {}", tokens[0]);
             String::from("ER: Unknown token recieved!")
         }
     }
@@ -246,9 +351,10 @@ async fn connect(
     Ok(client)
 }
 
-async fn start_board(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Result<String> {
+async fn start_panel(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Result<String> {
     let dmc = tokens[1].to_string();
     let boards = tokens[2].parse::<u8>()?;
+    let mode = server.lock().unwrap().get_mode();
 
     debug!("Starting new board: {dmc}");
 
@@ -258,6 +364,14 @@ async fn start_board(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
         return Ok(String::from("GS"));
     }
 
+    // B) traceability is disabled
+    if mode != AppMode::Enabled {
+        warn!("Mode is set to {mode:?}");
+        server.lock().unwrap().push_panel(&dmc);
+        return Ok(String::from("OK: MES is disabled!"));
+    }
+
+    // C) Query dmc from the SQL db
     // Tiberius configuartion:
 
     let sql_server = server.lock().unwrap().config.get_server().to_owned();
@@ -301,6 +415,7 @@ async fn start_board(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
         if let Some(x) = row.get::<i32, usize>(0) {
             tested_total = x;
             if tested_total < LIMIT {
+                server.lock().unwrap().push_panel(&dmc);
                 return Ok(format!("OK: {tested_total}"));
             } else if tested_total >= LIMIT_2 {
                 return Ok(format!("NK: {tested_total}"));
@@ -340,12 +455,110 @@ async fn start_board(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
             if x >= LIMIT {
                 Ok(format!("NK: {x} ({tested_total})"))
             } else {
+                server.lock().unwrap().push_panel(&dmc);
                 Ok(format!("OK: {x} ({tested_total})"))
             }
         } else {
             bail!("Q#2 Parsing error.");
         }
     } else {
+        server.lock().unwrap().push_panel(&dmc);
         Ok(format!("OK: 0 ({tested_total})")) // Q#2 will return NONE, if the MB has no 'failed' results at all.
     }
+}
+
+async fn end_panel(server: Arc<Mutex<App>>) -> anyhow::Result<String> {
+    let logs = server.lock().unwrap().extract_logs();
+    let mode = server.lock().unwrap().get_mode();
+
+    if logs.is_empty() {
+        error!("Log buffer is empty!");
+        bail!("Log buffer is empty!");
+    }
+
+    if mode == AppMode::OffLine {
+        warn!("Mode is set to {mode:?}");
+        return Ok(String::from("OK: Off-line mode"));
+    }
+
+    let mut ict_logs = Vec::new();
+    for log in logs {
+        debug!("Parsing log: {log}");
+        if let Ok(l) = ICT_log_file::LogFile::load(&PathBuf::from(log)) {
+            ict_logs.push(l);
+        } else {
+            error!("Parsing failed!")
+        }
+    }
+
+    if ict_logs.is_empty() {
+        error!("ICT log buffer is empty!");
+        bail!("ICT log buffer is empty!");
+    }
+
+    let dmc = ict_logs[0].get_main_DMC();
+    let sanity_check = server.lock().unwrap().check_panel(dmc);
+    server.lock().unwrap().remove_panel(dmc);
+
+    if !sanity_check {
+        error!("Error processing panel!");
+        bail!("Error processing panel!");
+    }
+
+    // Tiberius configuartion:
+
+    let sql_server = server.lock().unwrap().config.get_server().to_owned();
+    let sql_user = server.lock().unwrap().config.get_username().to_owned();
+    let sql_pass = server.lock().unwrap().config.get_password().to_owned();
+
+    let mut tib_config = tiberius::Config::new();
+    tib_config.host(sql_server);
+    tib_config.authentication(tiberius::AuthMethod::sql_server(sql_user, sql_pass));
+    tib_config.trust_cert(); // Most likely not needed.
+
+    let mut client_tmp = connect(tib_config.clone()).await;
+    let mut tries = 0;
+    while client_tmp.is_err() && tries < 3 {
+        client_tmp = connect(tib_config.clone()).await;
+        tries += 1;
+    }
+
+    if client_tmp.is_err() {
+        bail!("Connection to DB failed!")
+    }
+    let mut client = client_tmp.unwrap();
+
+    // USE [DB]
+    let qtext = format!("USE [{}]", server.lock().unwrap().config.get_database());
+    let query = Query::new(qtext);
+    query.execute(&mut client).await.unwrap();
+
+    let station = server.lock().unwrap().config.get_station_name().to_owned();
+
+    // Upload new results
+    let mut qtext = String::from(
+        "INSERT INTO [dbo].[SMT_Test] 
+        ([Serial_NMBR], [Station], [Result], [Date_Time], [Log_File_Name], [SW_Version], [Notes])
+        VALUES",
+    );
+    for log in ict_logs {
+        qtext += &format!(
+            "('{}', '{}', '{}', '{}', '{}', '{}', '{}')",
+            log.get_DMC(),
+            station,
+            if log.get_status() == 0 {
+                "Passed "
+            } else {
+                "Failed"
+            },
+            ICT_log_file::u64_to_time(log.get_time_end()),
+            log.get_source().to_string_lossy(),
+            "to_do",
+            "to_do_2"
+        );
+    }
+    let query = Query::new(qtext);
+    query.execute(&mut client).await.unwrap();
+
+    Ok(String::from("OK"))
 }

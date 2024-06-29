@@ -17,3 +17,4 @@ env_logger = "0"
 log = "0"
 
 ICT_config = { path = "..\\config"}
+ICT_log_file = { path = "..\\log_file"}

@@ -5143,6 +5143,7 @@ name = "traceability-server"
 version = "0.1.0"
 dependencies = [
  "ICT_config",
+ "ICT_log_file",
  "anyhow",
  "env_logger",
  "log",
