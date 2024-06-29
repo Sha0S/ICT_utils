@@ -5134,6 +5134,9 @@ dependencies = [
 [[package]]
 name = "traceability-client"
 version = "0.1.0"
+dependencies = [
+ "ICT_config",
+]
 
 [[package]]
 name = "traceability-server"
