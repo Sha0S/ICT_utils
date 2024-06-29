@@ -209,7 +209,8 @@ async fn process_message(
         }
         _ => {
             tx.send(Message::Red).unwrap();
-            String::from("ERR: Unknown token recieved!") }
+            String::from("ERR: Unknown token recieved!")
+        }
     }
 }
 
