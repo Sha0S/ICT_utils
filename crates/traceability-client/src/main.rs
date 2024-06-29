@@ -1,7 +1,6 @@
 use std::env;
 use std::io::prelude::*;
 use std::net::TcpStream;
-use std::path::PathBuf;
 
 use ICT_config::*;
 
@@ -26,7 +25,12 @@ static CONFIG: &str = "config.ini";
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     
-    let config = match Config::read(PathBuf::from(CONFIG)) {
+    // The current working directory will be not the directory of the executable,
+    // So we will need to make absolut paths for .\config and .\golden_samples
+    let exe_path = env::current_exe().expect("ER: Can't read the directory of the executable!"); // Shouldn't fail.
+
+    // Read configuration
+    let config = match Config::read(exe_path.with_file_name(CONFIG)) {
         Ok(c) => c,
         Err(e) => {
             println!("{e}");
