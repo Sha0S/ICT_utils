@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use anyhow::bail;
+use log::{debug, error, info, warn};
 use std::{
     io,
     path::PathBuf,
@@ -44,10 +45,15 @@ impl Default for App {
         let config = match Config::read(PathBuf::from(CONFIG)) {
             Ok(c) => c,
             Err(e) => {
-                println!("{e}");
+                error!("{e}");
                 std::process::exit(0)
             }
         };
+
+        if config.get_MES_server().is_empty() || config.get_station_name().is_empty() {
+            error!("Missing fields from config file!");
+            std::process::exit(0)
+        }
 
         App {
             config,
@@ -58,6 +64,14 @@ impl Default for App {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    
+    env_logger::init();
+    info!("Starting server");
+
+
     let server = Arc::new(Mutex::new(App::default()));
     let (tx, rx) = mpsc::sync_channel(1);
 
@@ -72,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
             .config
             .get_MES_server()
             .to_owned();
-        println!("Connecting to: {}", MES_server);
+        info!("Connecting to: {}", MES_server);
         let listener = TcpListener::bind(MES_server)
             .await
             .expect("ER: can't connect to socket!");
@@ -112,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         match rx.recv() {
             Ok(Message::Quit) => {
-                println!("Quit");
+                info!("Stoping server due user request");
                 break;
             }
             Ok(Message::Red) => {
@@ -123,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(Message::Green) => tray.set_icon(IconSource::Resource("green-icon")).unwrap(),
             Ok(Message::Login) => {
+                info!("Login attempted")
                 // to_do
             }
             _ => {}
@@ -140,7 +155,7 @@ async fn handle_client(server: Arc<Mutex<App>>, tx: SyncSender<Message>, stream:
                 match stream.try_read(&mut buf) {
                     Ok(_) => {
                         let message = String::from_utf8_lossy(&buf).to_string();
-                        println!("{message}");
+                        info!("Message recieved: {message}");
                         break process_message(server, tx.clone(), message).await;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -148,6 +163,7 @@ async fn handle_client(server: Arc<Mutex<App>>, tx: SyncSender<Message>, stream:
                     }
                     Err(e) => {
                         tx.send(Message::Red).unwrap();
+                        error!("Message read failed: {e}");
                         break format!("{e}");
                     }
                 }
@@ -155,7 +171,7 @@ async fn handle_client(server: Arc<Mutex<App>>, tx: SyncSender<Message>, stream:
         }
     };
 
-    println!("Response: {response}");
+    info!("Response: {response}");
 
     loop {
         if let Ok(ready) = stream.ready(Interest::WRITABLE).await {
@@ -169,7 +185,7 @@ async fn handle_client(server: Arc<Mutex<App>>, tx: SyncSender<Message>, stream:
                     }
                     Err(e) => {
                         tx.send(Message::Red).unwrap();
-                        println!("ERR: {e}");
+                        error!("Message write failed: {e}");
                         break;
                     }
                 }
@@ -184,11 +200,12 @@ async fn process_message(
     input: String,
 ) -> String {
     let tokens: Vec<&str> = input.split('|').map(|f| f.trim_end_matches('\0')).collect();
-    println!("Tokens: {:?}", tokens);
+    debug!("Tokens: {:?}", tokens);
     match tokens[0] {
         "START" => {
             if tokens.len() < 3 {
                 tx.send(Message::Yellow).unwrap();
+                error!("Missing token after START!");
                 String::from("ER: Missing token!")
             } else {
                 match start_board(server, tokens).await {
@@ -199,16 +216,21 @@ async fn process_message(
 
                     Err(x) => {
                         tx.send(Message::Red).unwrap();
+                        error!("Failed to START panel: {x}");
                         format!("ER: {x}")
                     }
                 }
             }
+        }
+        "LOG" => {
+            todo!()
         }
         "END" => {
             todo!()
         }
         _ => {
             tx.send(Message::Red).unwrap();
+            warn!("Unknown token recieved! {}",tokens[0] );
             String::from("ER: Unknown token recieved!")
         }
     }
@@ -228,7 +250,7 @@ async fn start_board(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
     let dmc = tokens[1].to_string();
     let boards = tokens[2].parse::<u8>()?;
 
-    println!("Starting new board: {dmc}");
+    debug!("Starting new board: {dmc}");
 
     // A) Is it a golden sample
 

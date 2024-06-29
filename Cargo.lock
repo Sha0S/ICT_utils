@@ -5144,6 +5144,8 @@ version = "0.1.0"
 dependencies = [
  "ICT_config",
  "anyhow",
+ "env_logger",
+ "log",
  "once_cell",
  "tiberius",
  "tokio",
