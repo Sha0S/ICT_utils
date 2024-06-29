@@ -46,9 +46,31 @@ pub fn u64_to_string(mut x: u64) -> String {
     x %= u64::pow(10, 2);
 
     format!(
-        "{:02.0}.{:02.0}.{:02.0} {:02.0}:{:02.0}:{:02.0}",
+        "{:02.0}.{:02.0}.{:02.0}. {:02.0}:{:02.0}:{:02.0}",
         YY, MM, DD, hh, mm, x
     )
+}
+
+pub fn u64_to_time(mut x: u64) -> chrono::NaiveDateTime {
+    let year: u64 = x / u64::pow(10, 10) + 2000;
+    x %= u64::pow(10, 10);
+
+    let month = x / u64::pow(10, 8);
+    x %= u64::pow(10, 8);
+
+    let day: u64 = x / u64::pow(10, 6);
+    x %= u64::pow(10, 6);
+
+    let hour = x / u64::pow(10, 4);
+    x %= u64::pow(10, 4);
+
+    let min = x / u64::pow(10, 2);
+    x %= u64::pow(10, 2);
+
+    let date = chrono::NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32).unwrap();
+    let time = chrono::NaiveTime::from_hms_opt(hour as u32, min as u32, x as u32).unwrap();
+
+    date.and_time(time)
 }
 
 fn local_time_to_u64(t: chrono::DateTime<chrono::Local>) -> u64 {
