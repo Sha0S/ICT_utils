@@ -83,6 +83,7 @@ pub struct Config {
 
     log_reader: String,
     MES_server: String,
+    station_name: String
 }
 
 impl Config {
@@ -126,6 +127,10 @@ impl Config {
                 if let Some(server) = app.get("MES_SERVER") {
                     c.MES_server = server.to_owned();
                 }
+
+                if let Some(station) = app.get("STATION") {
+                    c.station_name = station.to_owned();
+                }
             }
         } else {
             return Err(anyhow::Error::msg(format!(
@@ -159,6 +164,10 @@ impl Config {
 
     pub fn get_MES_server(&self) -> &str {
         &self.MES_server
+    }
+
+    pub fn get_station_name(&self) -> &str {
+        &self.station_name
     }
 }
 
