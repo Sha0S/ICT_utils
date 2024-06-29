@@ -16,7 +16,14 @@ static CONFIG: &str = "config.ini";
         d) System error: "ER: {error message}"
 
 2) At the end of the ICT test, send the paths of the logs to be processed.
-    Params: END {list of paths for the logs}
+We have to send them one-by-one, as BT-BASIC has a limited buffer, and a string can't handle up to 20 logs at once.
+    Params: LOG {path for the log}
+    Return message from the traceability-server:
+        a) Log recieved: "OK"
+        b) Communication error: "ER"
+
+3) After all the logs are sent, call "END" to finalize the upload.
+    Params: END
     Return message from the traceability-server:
         a) Upload is succesfull: "OK"
         b) Upload failed: "ER: {error message}"
