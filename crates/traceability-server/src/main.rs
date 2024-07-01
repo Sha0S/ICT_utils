@@ -44,16 +44,10 @@ enum AppMode {
     OffLine,
     Override,
 }
-
-struct Panel {
-    dmc: String,
-    mode: AppMode,
-}
-
 struct App {
     config: Config,
     mode: AppMode,
-    panels: Vec<Panel>,
+    last_mode: AppMode,
     logs: Vec<String>,
     golden_samples: Vec<String>,
 }
@@ -76,7 +70,7 @@ impl Default for App {
         App {
             config,
             mode: AppMode::Enabled,
-            panels: Vec::new(),
+            last_mode: AppMode::Enabled,
             logs: Vec::new(),
             golden_samples: load_gs_list(PathBuf::from(GOLDEN)),
         }
@@ -84,25 +78,12 @@ impl Default for App {
 }
 
 impl App {
-    fn push_panel(&mut self, dmc: &str) {
-        self.panels.push(Panel {
-            dmc: dmc.to_owned(),
-            mode: self.mode,
-        })
+    fn push_mode(&mut self) {
+        self.last_mode = self.mode;
     }
 
-    fn check_panel(&self, dmc: &str) -> bool {
-        if let Some(x) = self.panels.iter().find(|f| f.dmc == dmc) {
-            x.mode == self.mode
-        } else {
-            false
-        }
-    }
-
-    fn remove_panel(&mut self, dmc: &str) {
-        if let Some(x) = self.panels.iter().position(|f| f.dmc == dmc) {
-            let _ = self.panels.swap_remove(x);
-        }
+    fn check_mode(&self) -> bool {
+        self.mode == self.last_mode
     }
 
     fn push_log(&mut self, log: &str) {
@@ -367,7 +348,7 @@ async fn start_panel(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
     // B) traceability is disabled
     if mode != AppMode::Enabled {
         warn!("Mode is set to {mode:?}");
-        server.lock().unwrap().push_panel(&dmc);
+        server.lock().unwrap().push_mode();
         return Ok(String::from("OK: MES is disabled!"));
     }
 
@@ -415,7 +396,7 @@ async fn start_panel(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
         if let Some(x) = row.get::<i32, usize>(0) {
             tested_total = x;
             if tested_total < LIMIT {
-                server.lock().unwrap().push_panel(&dmc);
+                server.lock().unwrap().push_mode();
                 return Ok(format!("OK: {tested_total}"));
             } else if tested_total >= LIMIT_2 {
                 return Ok(format!("NK: {tested_total}"));
@@ -455,14 +436,14 @@ async fn start_panel(server: Arc<Mutex<App>>, tokens: Vec<&str>) -> anyhow::Resu
             if x >= LIMIT {
                 Ok(format!("NK: {x} ({tested_total})"))
             } else {
-                server.lock().unwrap().push_panel(&dmc);
+                server.lock().unwrap().push_mode();
                 Ok(format!("OK: {x} ({tested_total})"))
             }
         } else {
             bail!("Q#2 Parsing error.");
         }
     } else {
-        server.lock().unwrap().push_panel(&dmc);
+        server.lock().unwrap().push_mode();
         Ok(format!("OK: 0 ({tested_total})")) // Q#2 will return NONE, if the MB has no 'failed' results at all.
     }
 }
@@ -496,11 +477,7 @@ async fn end_panel(server: Arc<Mutex<App>>) -> anyhow::Result<String> {
         bail!("ICT log buffer is empty!");
     }
 
-    let dmc = ict_logs[0].get_main_DMC();
-    let sanity_check = server.lock().unwrap().check_panel(dmc);
-    server.lock().unwrap().remove_panel(dmc);
-
-    if !sanity_check {
+    if !server.lock().unwrap().check_mode() {
         error!("Error processing panel!");
         bail!("Error processing panel!");
     }
