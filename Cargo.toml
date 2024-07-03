@@ -1,6 +1,6 @@
 [package]
 name = "ICT_utils"
-version = "2.5.2"
+version = "2.6.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -54,8 +54,12 @@ tiberius = { version = "0", features = ["all"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0", features = ["compat"] }
 tokio-stream = "0.1.15"
-winauth = "0.0.5"
 tray-item = "0.10.0"
+pwhash = "1"
+winsafe = { version = "0.0.21", features = ["gui"] }
+
+# cargo update bitstream-io --precise 2.3.0
+# cargo update ravif --precise 0.11.6
 
 ICT_log_file = { path = ".\\crates\\log_file"}
 ICT_config = { path = ".\\crates\\config"}
