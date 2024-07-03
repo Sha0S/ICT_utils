@@ -355,6 +355,7 @@ pub struct LogFile {
 
     tests: Vec<Test>,
     report: String,
+    SW_version: String,
 }
 
 impl LogFile {
@@ -388,6 +389,7 @@ impl LogFile {
 
         // Variables for user defined blocks:
         let mut PS_counter = 0;
+        let mut SW_version = String::new();
         //
 
         let tree = keysight_log::parse_file(p)?;
@@ -908,6 +910,11 @@ impl LogFile {
                             limits: TLimit::None,
                         });
                     }
+                    x if x.starts_with("@MySW") => {
+                        if let Some(x) = s.get(1) {
+                            SW_version = x.to_string();
+                        }
+                    }
                     _ => {
                         eprintln!("ERR: Not implemented USER DEFINED block!\n\t{:?}", s);
                     }
@@ -962,7 +969,12 @@ impl LogFile {
             time_end,
             tests,
             report: report.join("\n"),
+            SW_version,
         })
+    }
+
+    pub fn is_ok(&self) -> bool {
+        !self.tests.is_empty() && self.DMC != "NoDMC" && self.DMC_mb != "NoMB"
     }
 
     pub fn has_report(&self) -> bool {
@@ -1005,8 +1017,26 @@ impl LogFile {
         &self.report
     }
 
+    pub fn get_SW_ver(&self) -> &str {
+        &self.SW_version
+    }
+
     pub fn get_tests(&self) -> &Vec<Test> {
         &self.tests
+    }
+
+    pub fn get_failed_tests(&self) -> Vec<String> {
+        let mut ret = Vec::new();
+
+        if self.status != 0 {
+            for test in self.tests.iter() {
+                if test.result.0 == BResult::Fail {
+                    ret.push(test.name.clone());
+                }
+            }
+        }
+
+        ret
     }
 }
 
