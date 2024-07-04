@@ -204,6 +204,7 @@ async fn start_panel(server: &mut TcpServer, tokens: Vec<&str>) -> anyhow::Resul
     // A) Is it a golden sample
 
     if server.golden_samples.contains(&dmc) {
+        server.push_mode();
         return Ok(String::from("GS"));
     }
 
@@ -401,7 +402,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
             log.get_DMC(),
             station,
             if log.get_status() == 0 {
-                "Passed "
+                "Passed"
             } else {
                 "Failed"
             },
