@@ -31,6 +31,11 @@ We have to send them one-by-one, as BT-BASIC has a limited buffer, and a string 
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        println!("ER: No argument found!");
+        return Ok(());
+    }
     
     // The current working directory will be not the directory of the executable,
     // So we will need to make absolut paths for .\config and .\golden_samples
