@@ -23,6 +23,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ICT_auth"
+version = "0.1.0"
+dependencies = [
+ "pwhash",
+]
+
+[[package]]
 name = "ICT_config"
 version = "0.0.0"
 dependencies = [
@@ -90,6 +97,7 @@ dependencies = [
 name = "ICT_utils"
 version = "2.6.2"
 dependencies = [
+ "ICT_auth",
  "ICT_config",
  "ICT_log_file",
  "anyhow",
@@ -857,6 +865,10 @@ dependencies = [
  "libc",
  "winapi",
 ]
+
+[[package]]
+name = "auth_manager"
+version = "0.1.0"
 
 [[package]]
 name = "autocfg"
@@ -5338,6 +5350,7 @@ dependencies = [
 name = "traceability-server"
 version = "0.1.0"
 dependencies = [
+ "ICT_auth",
  "ICT_config",
  "ICT_log_file",
  "anyhow",

@@ -63,5 +63,5 @@ winsafe = { version = "0.0.21", features = ["gui"] }
 
 ICT_log_file = { path = ".\\crates\\log_file"}
 ICT_config = { path = ".\\crates\\config"}
-
+ICT_auth = { path = ".\\crates\\auth"}
 

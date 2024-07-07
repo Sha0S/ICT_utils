@@ -1,6 +1,6 @@
-#![allow(dead_code)]
-use std::fs;
+#![allow(non_snake_case)]
 
+use std::fs;
 use pwhash::bcrypt;
 
 static USER_LIST: &str = "users";
@@ -40,7 +40,7 @@ pub struct User {
 }
 
 impl User {
-    fn new(name: String, level: UserLevel) -> Self {
+    pub fn new(name: String, level: UserLevel) -> Self {
         Self {
             name,
             level,
@@ -48,7 +48,7 @@ impl User {
         }
     }
 
-    fn create_hash(&mut self, pass: String) {
+    pub fn create_hash(&mut self, pass: String) {
         self.hash = bcrypt::hash(self.level.pepper(pass)).unwrap();
     }
 

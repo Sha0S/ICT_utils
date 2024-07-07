@@ -20,3 +20,4 @@ winsafe = { version = "0.0.21", features = ["gui"] }
 
 ICT_config = { path = "..\\config"}
 ICT_log_file = { path = "..\\log_file"}
+ICT_auth = { path = "..\\auth"}

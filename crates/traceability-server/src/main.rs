@@ -17,8 +17,7 @@ use tcp::*;
 mod tray;
 use tray::*;
 
-mod auth;
-use auth::*;
+use ICT_auth::*;
 
 const TIME_LIMIT: i64 = 10;
 
