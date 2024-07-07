@@ -9,6 +9,7 @@ pub enum Message {
     Settings,
 
     LogIn,
+    LogOut,
 
     SetMode(AppMode),
 
@@ -67,6 +68,15 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
             .unwrap(),
     );
 
+    let tx_clone = tx.clone();
+    ret.push( // 5
+        tray.inner_mut()
+            .add_menu_item_with_id("", move || {
+                tx_clone.send(Message::LogOut).unwrap();
+            })
+            .unwrap(),
+    );
+
     tray.inner_mut().add_separator().unwrap();
 
     let settings_tx = tx.clone();
@@ -85,20 +95,20 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
 }
 
 pub fn update_tray_login(tray: &mut TrayItem, tray_ids: &[u32], level: UserLevel) {
-    tray.inner_mut().set_menu_item_label("Logout", tray_ids[1]).unwrap();
-
     tray.inner_mut().set_menu_item_label("Enable MES", tray_ids[2]).unwrap();
     tray.inner_mut().set_menu_item_label("Go Offline", tray_ids[3]).unwrap();
+
     if level != UserLevel::Tech {
         tray.inner_mut().set_menu_item_label("Override MES", tray_ids[4]).unwrap();
     }
+
+    tray.inner_mut().set_menu_item_label("Logout", tray_ids[5]).unwrap();
 }
 
 pub fn update_tray_logout(tray: &mut TrayItem, tray_ids: &[u32]) {
-    tray.inner_mut().set_menu_item_label("Login", tray_ids[1]).unwrap();
-
+    tray.inner_mut().set_label("ICT Traceability Server", tray_ids[0]).unwrap();
     tray.inner_mut().set_menu_item_label("", tray_ids[2]).unwrap();
     tray.inner_mut().set_menu_item_label("", tray_ids[3]).unwrap();
     tray.inner_mut().set_menu_item_label("", tray_ids[4]).unwrap();
-
+    tray.inner_mut().set_menu_item_label("", tray_ids[5]).unwrap();
 }

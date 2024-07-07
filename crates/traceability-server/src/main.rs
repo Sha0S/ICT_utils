@@ -1,9 +1,13 @@
 #![allow(non_snake_case)]
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::{
+    sync::{mpsc, Arc, Mutex},
+    time::Duration,
+};
 
+use chrono::DateTime;
 use log::{debug, info};
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, time::sleep};
 use tray_item::IconSource;
 use winsafe::{co::ES, gui, prelude::*, AnyResult};
 
@@ -15,6 +19,8 @@ use tray::*;
 
 mod auth;
 use auth::*;
+
+const TIME_LIMIT: i64 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum AppMode {
@@ -62,9 +68,10 @@ async fn main() -> anyhow::Result<()> {
 
     let (mut tray, tray_ids) = init_tray(tx.clone());
     let mut active_user = None;
+    let mut logout_timer: Option<DateTime<chrono::Local>> = None;
 
     loop {
-        match rx.recv() {
+        match rx.try_recv() {
             Ok(Message::Quit) => {
                 info!("Stoping server due user request");
                 break;
@@ -78,21 +85,24 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(Message::Green) => tray.set_icon(IconSource::Resource("green-icon")).unwrap(),
             Ok(Message::LogIn) => {
+                info!("Login started");
+                if let Ok(res) = login() {
+                    debug!("Login result: {res:?}");
+                    logout_timer = Some(chrono::Local::now());
+                    let level = res.level.clone();
+                    *act_user_name.lock().unwrap() = res.name.clone();
+                    active_user = Some(res);
+                    update_tray_login(&mut tray, &tray_ids, level)
+                }
+            }
+            Ok(Message::LogOut) => {
                 if active_user.is_some() {
                     info!("Loging out");
                     active_user = None;
+                    logout_timer = None;
                     act_user_name.lock().unwrap().clear();
                     tx.send(Message::SetMode(AppMode::Enabled)).unwrap();
                     update_tray_logout(&mut tray, &tray_ids);
-                } else {
-                    info!("Login started");
-                    if let Ok(res) = login() {
-                        debug!("Login result: {res:?}");
-                        let level = res.level.clone();
-                        *act_user_name.lock().unwrap() = res.name.clone();
-                        active_user = Some(res);
-                        update_tray_login(&mut tray, &tray_ids, level)
-                    }
                 }
             }
             Ok(Message::SetMode(m)) => {
@@ -123,6 +133,21 @@ async fn main() -> anyhow::Result<()> {
             }
             _ => {}
         }
+
+        if let Some(x) = logout_timer {
+            let time_elapsed = chrono::Local::now() - x;
+
+            if time_elapsed >= chrono::TimeDelta::minutes(TIME_LIMIT) {
+                tx.send(Message::LogOut).unwrap();
+            } else {
+                let seconds_left = 60 * TIME_LIMIT - time_elapsed.num_seconds();
+                tray.inner_mut()
+                    .set_label(&format!("Logout in: {}s", seconds_left), tray_ids[0])
+                    .unwrap();
+            }
+        }
+
+        sleep(Duration::from_millis(500)).await;
     }
 
     Ok(())
@@ -134,7 +159,7 @@ fn login() -> AnyResult<User> {
 
 #[derive(Clone)]
 pub struct MyLoginWindow {
-    wnd: gui::WindowMain,   // responsible for managing the window
+    wnd: gui::WindowMain, // responsible for managing the window
     edit_name: gui::Edit,
     edit_pass: gui::Edit,
     btn_login: gui::Button, // a button
@@ -164,21 +189,21 @@ impl MyLoginWindow {
             &wnd,
             gui::EditOpts {
                 text: "Name".to_owned(),
-                position: (20,20),
+                position: (20, 20),
                 width: 260,
                 ..Default::default()
-            }
+            },
         );
 
         let edit_pass = gui::Edit::new(
             &wnd,
             gui::EditOpts {
                 text: "Pass".to_owned(),
-                position: (20,50),
+                position: (20, 50),
                 width: 260,
                 edit_style: ES::PASSWORD,
                 ..Default::default()
-            }
+            },
         );
 
         let btn_login = gui::Button::new(
@@ -210,7 +235,6 @@ impl MyLoginWindow {
         } else {
             AnyResult::Err("Failed login".into())
         }
-        
     }
 
     fn events(&mut self) {
