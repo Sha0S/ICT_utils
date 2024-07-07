@@ -102,7 +102,7 @@ pub fn update_tray_login(tray: &mut TrayItem, tray_ids: &[u32], level: UserLevel
     tray.inner_mut().set_menu_item_label("Enable MES", tray_ids[2]).unwrap();
     tray.inner_mut().set_menu_item_label("Go Offline", tray_ids[3]).unwrap();
 
-    if level != UserLevel::Tech {
+    if level > UserLevel::Technician {
         tray.inner_mut().set_menu_item_label("Override MES", tray_ids[4]).unwrap();
     }
 

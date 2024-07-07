@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
                 if let Ok(res) = login() {
                     debug!("Login result: {res:?}");
                     logout_timer = Some(chrono::Local::now());
-                    let level = res.level.clone();
+                    let level = res.level;
                     *act_user_name.lock().unwrap() = res.name.clone();
                     active_user = Some(res);
                     update_tray_login(&mut tray, &tray_ids, level)
@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                     AppMode::Override => {
                         if let Some(user) = active_user.as_ref() {
-                            if user.level != UserLevel::Tech {
+                            if user.level > UserLevel::Technician {
                                 *mode.lock().unwrap() = m;
                                 tx.send(Message::SetIcon(IconCollor::Purple)).unwrap();
                                 info!("AppMode set to {m:?}");
@@ -263,7 +263,7 @@ impl MyLoginWindow {
         self2.btn_login.on().bn_clicked(move || {
             // button click event
             for (i, user) in self2.users.iter().enumerate() {
-                if user.name == self2.edit_name.text() && user.check_pw(self2.edit_pass.text()) {
+                if user.name == self2.edit_name.text() && user.check_pw(&self2.edit_pass.text()) {
                     *sel_2.lock().unwrap() = Some(i);
                     self2.wnd.hwnd().DestroyWindow()?;
                     break;

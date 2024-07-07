@@ -9,6 +9,10 @@ edition = "2021"
 members = ["crates/*"]
 
 [[bin]]
+name = "auth_manager"
+path = ".\\crates\\auth_manager\\src\\main.rs"
+
+[[bin]]
 name = "analysis"
 path = ".\\crates\\analysis\\src\\main.rs"
 

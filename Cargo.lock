@@ -30,6 +30,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ICT_auth_manager"
+version = "0.1.0"
+dependencies = [
+ "ICT_auth",
+ "anyhow",
+ "eframe",
+ "egui",
+ "egui_extras",
+ "env_logger 0.9.3",
+]
+
+[[package]]
 name = "ICT_config"
 version = "0.0.0"
 dependencies = [
@@ -865,10 +877,6 @@ dependencies = [
  "libc",
  "winapi",
 ]
-
-[[package]]
-name = "auth_manager"
-version = "0.1.0"
 
 [[package]]
 name = "autocfg"
