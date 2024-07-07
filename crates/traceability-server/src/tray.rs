@@ -84,7 +84,7 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     tray.inner_mut().add_separator().unwrap();
 
     let settings_tx = tx.clone();
-    tray.add_menu_item("Settings", move || {
+    tray.add_menu_item("Users", move || {
         settings_tx.send(Message::Settings).unwrap();
     })
     .unwrap();

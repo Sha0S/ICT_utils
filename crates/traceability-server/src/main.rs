@@ -75,7 +75,10 @@ async fn main() -> anyhow::Result<()> {
                 info!("Stoping server due user request");
                 break;
             }
-            Ok(Message::Settings) => {}
+            Ok(Message::Settings) => {
+                std::process::Command::new("auth_manager.exe").spawn().unwrap();
+
+            }
             Ok(Message::SetIcon(icon)) => {
                 let c_mode = *mode.lock().unwrap();
                 match icon {
