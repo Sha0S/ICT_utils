@@ -13,7 +13,7 @@ use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 use ICT_config::*;
 
-use crate::{AppMode, Message};
+use crate::{AppMode, IconCollor, Message};
 
 static CONFIG: &str = "config.ini";
 static GOLDEN: &str = "golden_samples";
@@ -33,7 +33,11 @@ pub struct TcpServer {
 }
 
 impl TcpServer {
-    pub fn new(mode: Arc<Mutex<AppMode>>, tx: SyncSender<Message>, user: Arc<Mutex<String>>) -> Self {
+    pub fn new(
+        mode: Arc<Mutex<AppMode>>,
+        tx: SyncSender<Message>,
+        user: Arc<Mutex<String>>,
+    ) -> Self {
         let config = match Config::read(PathBuf::from(CONFIG)) {
             Ok(c) => c,
             Err(e) => {
@@ -98,7 +102,7 @@ pub async fn handle_client(server: &mut TcpServer, stream: TcpStream) {
                         continue;
                     }
                     Err(e) => {
-                        server.tx.send(Message::Red).unwrap();
+                        server.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                         error!("Message read failed: {e}");
                         break format!("{e}");
                     }
@@ -120,7 +124,7 @@ pub async fn handle_client(server: &mut TcpServer, stream: TcpStream) {
                         continue;
                     }
                     Err(e) => {
-                        server.tx.send(Message::Red).unwrap();
+                        server.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                         error!("Message write failed: {e}");
                         break;
                     }
@@ -136,18 +140,21 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
     match tokens[0] {
         "START" => {
             if tokens.len() < 3 {
-                server.tx.send(Message::Yellow).unwrap();
+                server
+                    .tx
+                    .send(Message::SetIcon(IconCollor::Yellow))
+                    .unwrap();
                 error!("Missing token after START!");
                 String::from("ER: Missing token!")
             } else {
                 match start_panel(server, tokens).await {
                     Ok(x) => {
-                        server.tx.send(Message::Green).unwrap();
+                        server.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
                         x
                     }
 
                     Err(x) => {
-                        server.tx.send(Message::Red).unwrap();
+                        server.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                         error!("Failed to START panel: {x}");
                         format!("ER: {x}")
                     }
@@ -159,25 +166,31 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
                 server.push_log(log);
                 String::from("OK")
             } else {
-                server.tx.send(Message::Yellow).unwrap();
+                server
+                    .tx
+                    .send(Message::SetIcon(IconCollor::Yellow))
+                    .unwrap();
                 error!("Missing token after LOG!");
                 String::from("ER: Missing log token!")
             }
         }
         "END" => match end_panel(server).await {
             Ok(x) => {
-                server.tx.send(Message::Green).unwrap();
+                server.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
                 x
             }
 
             Err(x) => {
-                server.tx.send(Message::Red).unwrap();
+                server.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                 error!("Failed to END panel: {x}");
                 format!("ER: {x}")
             }
         },
         _ => {
-            server.tx.send(Message::Red).unwrap();
+            server
+                .tx
+                .send(Message::SetIcon(IconCollor::Yellow))
+                .unwrap();
             warn!("Unknown token recieved! {}", tokens[0]);
             String::from("ER: Unknown token recieved!")
         }
@@ -337,7 +350,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
             } else {
                 error!("Could not process log: {log}");
                 bail!("Could not process log!")
-            }            
+            }
         } else {
             error!("Logfile parsing failed!");
             bail!("Logfile parsing failed!");
@@ -393,7 +406,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
     for log in ict_logs {
         let mut final_note = note.clone();
         if log.get_status() != 0 {
-            let failed_tests =  log.get_failed_tests().join(", ");
+            let failed_tests = log.get_failed_tests().join(", ");
             final_note += &format!(" Failed: {}", failed_tests);
         }
         final_note.truncate(200);
@@ -411,9 +424,9 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
             log.get_SW_ver(),
             final_note
         );
-    } 
+    }
     qtext.pop(); // removes last ','
-    
+
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
 

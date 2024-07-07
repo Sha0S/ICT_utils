@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
             .await
             .expect("ER: can't connect to socket!");
 
-        tcp_tx.send(Message::Green).unwrap();
+        tcp_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
 
         loop {
             if let Ok((stream, _)) = listener.accept().await {
@@ -77,13 +77,31 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             Ok(Message::Settings) => {}
-            Ok(Message::Red) => {
-                tray.set_icon(IconSource::Resource("red-icon")).unwrap();
+            Ok(Message::SetIcon(icon)) => {
+                let c_mode = *mode.lock().unwrap();
+                match icon {
+                    IconCollor::Green => match c_mode {
+                        AppMode::None | AppMode::Enabled => {
+                            tray.set_icon(IconSource::Resource("green-icon")).unwrap()
+                        }
+                        AppMode::OffLine => {
+                            tray.set_icon(IconSource::Resource("grey-icon")).unwrap()
+                        }
+                        AppMode::Override => {
+                            tray.set_icon(IconSource::Resource("purple-icon")).unwrap()
+                        }
+                    },
+
+                    IconCollor::Yellow => {
+                        tray.set_icon(IconSource::Resource("yellow-icon")).unwrap()
+                    }
+                    IconCollor::Red => tray.set_icon(IconSource::Resource("red-icon")).unwrap(),
+                    IconCollor::Grey => tray.set_icon(IconSource::Resource("grey-icon")).unwrap(),
+                    IconCollor::Purple => {
+                        tray.set_icon(IconSource::Resource("purple-icon")).unwrap()
+                    }
+                }
             }
-            Ok(Message::Yellow) => {
-                tray.set_icon(IconSource::Resource("yellow-icon")).unwrap();
-            }
-            Ok(Message::Green) => tray.set_icon(IconSource::Resource("green-icon")).unwrap(),
             Ok(Message::LogIn) => {
                 info!("Login started");
                 if let Ok(res) = login() {
@@ -110,11 +128,13 @@ async fn main() -> anyhow::Result<()> {
                 match m {
                     AppMode::Enabled => {
                         *mode.lock().unwrap() = m;
+                        tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
                         info!("AppMode set to {m:?}");
                     }
                     AppMode::OffLine => {
                         if active_user.is_some() {
                             *mode.lock().unwrap() = m;
+                            tx.send(Message::SetIcon(IconCollor::Grey)).unwrap();
                             info!("AppMode set to {m:?}");
                         }
                     }
@@ -122,6 +142,7 @@ async fn main() -> anyhow::Result<()> {
                         if let Some(user) = active_user.as_ref() {
                             if user.level != UserLevel::Tech {
                                 *mode.lock().unwrap() = m;
+                                tx.send(Message::SetIcon(IconCollor::Purple)).unwrap();
                                 info!("AppMode set to {m:?}");
                             }
                         }

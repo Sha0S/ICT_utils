@@ -4,6 +4,13 @@ use tray_item::{IconSource, TrayItem};
 
 use crate::{AppMode, UserLevel};
 
+pub enum IconCollor {
+    Green,
+    Yellow,
+    Red,
+    Grey,
+    Purple
+}
 pub enum Message {
     Quit,
     Settings,
@@ -12,10 +19,7 @@ pub enum Message {
     LogOut,
 
     SetMode(AppMode),
-
-    Green,
-    Yellow,
-    Red,
+    SetIcon(IconCollor)
 }
 
 pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
