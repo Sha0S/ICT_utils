@@ -44,7 +44,7 @@ impl From<&NewUser> for User {
 
 impl NewUser {
     fn all_ok(&self) -> bool {
-        !self.pass.len() > 4 && !self.name.len() > 4 && self.pass_match()
+        self.pass.len() > 4 && self.name.len() > 4 && self.pass_match()
     }
 
     fn pass_match(&self) -> bool {
