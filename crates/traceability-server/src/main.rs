@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let (mut tray, tray_ids) = init_tray(tx.clone());
-    let mut active_user = None;
+    let mut active_user: Option<User> = None;
     let mut logout_timer: Option<DateTime<chrono::Local>> = None;
 
     loop {
@@ -107,10 +107,18 @@ async fn main() -> anyhow::Result<()> {
             Ok(Message::LogIn) => {
                 info!("Login started");
                 if let Ok(res) = login() {
-                    debug!("Login result: {res:?}");
+                    info!("Login result: {res:?}");
                     logout_timer = Some(chrono::Local::now());
                     let level = res.level;
                     *act_user_name.lock().unwrap() = res.name.clone();
+
+                    if let Some(u) = active_user {
+                        if u.name != res.name {
+                            // if we log in as a diff user, then reset mode to enabled
+                            tx.send(Message::SetMode(AppMode::Enabled)).unwrap();
+                        }
+                    }
+
                     active_user = Some(res);
                     update_tray_login(&mut tray, &tray_ids, level)
                 }
