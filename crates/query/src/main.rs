@@ -257,7 +257,9 @@ impl eframe::App for IctResultApp {
 
                 let mut text_edit = egui::TextEdit::singleline(&mut self.DMC_input).desired_width(300.0).show(ui);
 
-                if ui.button("Logok keresése").clicked() && !self.panel.lock().unwrap().is_empty() {
+                let ok_button = ui.add(egui::Button::new("OK"));
+
+                if ui.button("Logok mentése").clicked() && !self.panel.lock().unwrap().is_empty() {
                     self.scan.clear();
 
                     for result in &self.panel.lock().unwrap().results {
@@ -268,7 +270,7 @@ impl eframe::App for IctResultApp {
                     self.scan.enable();
                 }
 
-                if text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && self.DMC_input.len() > 15 {
+                if ( ok_button.clicked() || (text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))) && self.DMC_input.len() > 15 {
                     println!("Query DMC: {}", self.DMC_input);
                     let DMC = self.DMC_input.clone();
 
