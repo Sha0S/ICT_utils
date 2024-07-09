@@ -19,7 +19,8 @@ pub enum Message {
     LogOut,
 
     SetMode(AppMode),
-    SetIcon(IconCollor)
+    SetIcon(IconCollor),
+    UpdateTimer,
 }
 
 pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {

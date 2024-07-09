@@ -19,7 +19,7 @@ use tray::*;
 
 use ICT_auth::*;
 
-const TIME_LIMIT: i64 = 10;
+const TIME_LIMIT: i64 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum AppMode {
@@ -69,8 +69,16 @@ async fn main() -> anyhow::Result<()> {
     let mut active_user: Option<User> = None;
     let mut logout_timer: Option<DateTime<chrono::Local>> = None;
 
+    let timer_tx = tx.clone();
+    tokio::spawn(async move {
+        loop {
+            timer_tx.send(Message::UpdateTimer).unwrap();
+            sleep(Duration::from_secs(1)).await;
+        }
+    });
+
     loop {
-        match rx.try_recv() {
+        match rx.recv() {
             Ok(Message::Quit) => {
                 info!("Stoping server due user request");
                 break;
@@ -101,6 +109,20 @@ async fn main() -> anyhow::Result<()> {
                     IconCollor::Grey => tray.set_icon(IconSource::Resource("grey-icon")).unwrap(),
                     IconCollor::Purple => {
                         tray.set_icon(IconSource::Resource("purple-icon")).unwrap()
+                    }
+                }
+            }
+            Ok(Message::UpdateTimer) => {
+                if let Some(x) = logout_timer {
+                    let time_elapsed = chrono::Local::now() - x;
+        
+                    if time_elapsed >= chrono::TimeDelta::minutes(TIME_LIMIT) {
+                        tx.send(Message::LogOut).unwrap();
+                    } else {
+                        let seconds_left = 60 * TIME_LIMIT - time_elapsed.num_seconds();
+                        tray.inner_mut()
+                            .set_label(&format!("Logout in: {}s", seconds_left), tray_ids[0])
+                            .unwrap();
                     }
                 }
             }
@@ -164,21 +186,6 @@ async fn main() -> anyhow::Result<()> {
             }
             _ => {}
         }
-
-        if let Some(x) = logout_timer {
-            let time_elapsed = chrono::Local::now() - x;
-
-            if time_elapsed >= chrono::TimeDelta::minutes(TIME_LIMIT) {
-                tx.send(Message::LogOut).unwrap();
-            } else {
-                let seconds_left = 60 * TIME_LIMIT - time_elapsed.num_seconds();
-                tray.inner_mut()
-                    .set_label(&format!("Logout in: {}s", seconds_left), tray_ids[0])
-                    .unwrap();
-            }
-        }
-
-        sleep(Duration::from_millis(500)).await;
     }
 
     Ok(())
