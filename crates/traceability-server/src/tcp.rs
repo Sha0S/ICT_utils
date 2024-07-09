@@ -177,6 +177,7 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
         "END" => match end_panel(server).await {
             Ok(x) => {
                 server.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+                debug!("END return value: {}", x);
                 x
             }
 
@@ -342,10 +343,12 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
     }
 
     let mut ict_logs = Vec::new();
+    let mut t_max_u64: u64 = 0;
     for log in logs {
         debug!("Parsing log: {log}");
         if let Ok(l) = ICT_log_file::LogFile::load(&PathBuf::from(&log)) {
             if l.is_ok() {
+                t_max_u64 = t_max_u64.max(l.get_time_end());
                 ict_logs.push(l);
             } else {
                 error!("Could not process log: {log}");
@@ -356,6 +359,8 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
             bail!("Logfile parsing failed!");
         }
     }
+
+    debug!("T_max: {}",t_max_u64);
 
     if ict_logs.is_empty() {
         error!("ICT log buffer is empty!");
@@ -392,6 +397,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
 
     // USE [DB]
     let qtext = format!("USE [{}]", server.config.get_database());
+    debug!("USE DB: {}",qtext);
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
 
@@ -403,6 +409,8 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
         ([Serial_NMBR], [Station], [Result], [Date_Time], [Log_File_Name], [SW_Version], [Notes])
         VALUES",
     );
+    
+    let t_max =  ICT_log_file::u64_to_time(t_max_u64);
     for log in ict_logs {
         let mut final_note = note.clone();
         if log.get_status() != 0 {
@@ -419,16 +427,19 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
             } else {
                 "Failed"
             },
-            ICT_log_file::u64_to_time(log.get_time_end()),
-            log.get_source().to_string_lossy(),
+            t_max,
+            &log.get_source().to_string_lossy()[2..],
             log.get_SW_ver(),
             final_note
         );
     }
     qtext.pop(); // removes last ','
 
+    debug!("Upload: {}",qtext);
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
+
+    debug!("Upload OK");
 
     Ok(String::from("OK"))
 }
