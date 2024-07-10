@@ -15,7 +15,8 @@ pub enum Message {
     Quit,
     Settings,
 
-    LogIn,
+    LogInStart,
+    LogIn(winsafe::AnyResult<ICT_auth::User>),
     LogOut,
 
     SetMode(AppMode),
@@ -41,7 +42,7 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     ret.push( // 1
         tray.inner_mut()
             .add_menu_item_with_id("Login", move || {
-                tx_clone.send(Message::LogIn).unwrap();
+                tx_clone.send(Message::LogInStart).unwrap();
             })
             .unwrap(),
     );

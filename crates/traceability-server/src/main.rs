@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![allow(clippy::collapsible_match)]
 
 use std::{
     sync::{mpsc, Arc, Mutex},
@@ -126,9 +127,16 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            Ok(Message::LogIn) => {
+            Ok(Message::LogInStart) => {
                 info!("Login started");
-                if let Ok(res) = login() {
+                let login_tx = tx.clone();
+                tokio::spawn(async move {
+                    let res = login();
+                    login_tx.send(Message::LogIn(res)).unwrap();
+                });
+            }
+            Ok(Message::LogIn(user)) => {
+                if let Ok(res) =  user {
                     info!("Login result: {res:?}");
                     logout_timer = Some(chrono::Local::now());
                     let level = res.level;
