@@ -339,7 +339,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
         warn!("Mode is set to {mode:?}");
         return Ok(String::from("OK: Off-line mode"));
     } else if mode == AppMode::Override {
-        note = format!("Tested by: {}.", server.user.lock().unwrap().as_str());
+        note = format!("Tested by: {}. ", server.user.lock().unwrap().as_str());
     }
 
     let mut ict_logs = Vec::new();
@@ -360,7 +360,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
         }
     }
 
-    debug!("T_max: {}",t_max_u64);
+    debug!("T_max: {}", t_max_u64);
 
     if ict_logs.is_empty() {
         error!("ICT log buffer is empty!");
@@ -397,7 +397,7 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
 
     // USE [DB]
     let qtext = format!("USE [{}]", server.config.get_database());
-    debug!("USE DB: {}",qtext);
+    debug!("USE DB: {}", qtext);
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
 
@@ -409,15 +409,23 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
         ([Serial_NMBR], [Station], [Result], [Date_Time], [Log_File_Name], [SW_Version], [Notes])
         VALUES",
     );
-    
-    let t_max =  ICT_log_file::u64_to_time(t_max_u64);
+
+    let t_max = ICT_log_file::u64_to_time(t_max_u64);
     for log in ict_logs {
         let mut final_note = note.clone();
         if log.get_status() != 0 {
             let failed_tests = log.get_failed_tests().join(", ");
-            final_note += &format!(" Failed: {}", failed_tests);
+            final_note += &format!("Failed: {}", failed_tests);
         }
         final_note.truncate(200);
+
+        let log_path = format!("{}", log.get_source().to_string_lossy());
+        let striped_log_path = if &log_path[1..2] == ":" {
+            &log_path[2..]
+        } else {
+            &log_path
+        };
+
         qtext += &format!(
             "('{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
             log.get_DMC(),
@@ -428,14 +436,14 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
                 "Failed"
             },
             t_max,
-            &log.get_source().to_string_lossy()[2..],
+            striped_log_path,
             log.get_SW_ver(),
             final_note
         );
     }
     qtext.pop(); // removes last ','
 
-    debug!("Upload: {}",qtext);
+    debug!("Upload: {}", qtext);
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
 
