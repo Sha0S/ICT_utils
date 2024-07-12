@@ -94,7 +94,7 @@ pub async fn handle_client(server: &mut TcpServer, stream: TcpStream) {
                 let mut buf = [0; 1024];
                 match stream.try_read(&mut buf) {
                     Ok(_) => {
-                        let message = String::from_utf8_lossy(&buf).to_string();
+                        let message = String::from_utf8_lossy(&buf).trim_matches('\0').to_string();
                         info!("Message recieved: {message}");
                         break process_message(server, message).await;
                     }
