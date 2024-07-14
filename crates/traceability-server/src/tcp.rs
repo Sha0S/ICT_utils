@@ -27,6 +27,7 @@ pub struct TcpServer {
     tx: SyncSender<Message>,
 
     last_mode: AppMode,
+    last_dmc: String,
     user: Arc<Mutex<String>>,
     logs: Vec<String>,
     golden_samples: Vec<String>,
@@ -56,18 +57,20 @@ impl TcpServer {
             mode,
             tx,
             last_mode: AppMode::None,
+            last_dmc: String::new(),
             user,
             logs: Vec::new(),
             golden_samples: load_gs_list(PathBuf::from(GOLDEN)),
         }
     }
 
-    fn push_mode(&mut self) {
+    fn push_mode(&mut self, dmc: String) {
         self.last_mode = *self.mode.lock().unwrap();
+        self.last_dmc = dmc;
     }
 
-    fn check_mode(&self) -> bool {
-        *self.mode.lock().unwrap() == self.last_mode
+    fn check_mode(&self, dmc: &str) -> bool {
+        *self.mode.lock().unwrap() == self.last_mode && self.last_dmc == dmc
     }
 
     fn push_log(&mut self, log: &str) {
@@ -218,14 +221,14 @@ async fn start_panel(server: &mut TcpServer, tokens: Vec<&str>) -> anyhow::Resul
     // A) Is it a golden sample
 
     if server.golden_samples.contains(&dmc) {
-        server.push_mode();
+        server.push_mode(dmc);
         return Ok(String::from("GS"));
     }
 
     // B) traceability is disabled
     if mode != AppMode::Enabled {
         warn!("Mode is set to {mode:?}");
-        server.push_mode();
+        server.push_mode(dmc);
         return Ok(String::from("OK: MES is disabled!"));
     }
 
@@ -273,7 +276,7 @@ async fn start_panel(server: &mut TcpServer, tokens: Vec<&str>) -> anyhow::Resul
         if let Some(x) = row.get::<i32, usize>(0) {
             tested_total = x;
             if tested_total < LIMIT {
-                server.push_mode();
+                server.push_mode(dmc);
                 return Ok(format!("OK: {tested_total}"));
             } else if tested_total >= LIMIT_2 {
                 return Ok(format!("NK: {tested_total}"));
@@ -313,14 +316,14 @@ async fn start_panel(server: &mut TcpServer, tokens: Vec<&str>) -> anyhow::Resul
             if x >= LIMIT {
                 Ok(format!("NK: {x} ({tested_total})"))
             } else {
-                server.push_mode();
+                server.push_mode(dmc);
                 Ok(format!("OK: {x} ({tested_total})"))
             }
         } else {
             bail!("Q#2 Parsing error.");
         }
     } else {
-        server.push_mode();
+        server.push_mode(dmc);
         Ok(format!("OK: 0 ({tested_total})")) // Q#2 will return NONE, if the MB has no 'failed' results at all.
     }
 }
@@ -367,7 +370,9 @@ async fn end_panel(server: &mut TcpServer) -> anyhow::Result<String> {
         bail!("ICT log buffer is empty!");
     }
 
-    if !server.check_mode() {
+    let dmc = ict_logs[0].get_main_DMC();
+
+    if !server.check_mode(dmc) {
         error!("Error processing panel!");
         bail!("Error processing panel!");
     }
