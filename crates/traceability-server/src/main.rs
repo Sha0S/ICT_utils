@@ -8,7 +8,7 @@ use std::{
 };
 
 use chrono::DateTime;
-use log::{debug, info};
+use log::{debug, error, info};
 use tokio::{net::TcpListener, time::sleep};
 use tray_item::IconSource;
 use winsafe::{co::ES, gui, prelude::*, AnyResult};
@@ -54,9 +54,15 @@ async fn main() -> anyhow::Result<()> {
         let mut tcp_server = TcpServer::new(tcp_mode, tcp_tx.clone(), tcp_user);
         let MES_server = tcp_server.config.get_MES_server().to_owned();
         info!("Connecting to: {}", MES_server);
-        let listener = TcpListener::bind(MES_server)
-            .await
-            .expect("ER: can't connect to socket!");
+
+        let listener = match TcpListener::bind(MES_server).await {
+            Ok(x) => x,
+            Err(_) => {
+                error!("ER: can't connect to socket!");
+                tcp_tx.send(Message::FatalError).unwrap();
+                panic!("ER: can't connect to socket!");
+            }
+        };
 
         tcp_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
 
@@ -85,9 +91,14 @@ async fn main() -> anyhow::Result<()> {
                 info!("Stoping server due user request");
                 break;
             }
+            Ok(Message::FatalError) => {
+                error!("Fatal error encountered, shuting down!");
+                break;
+            }
             Ok(Message::Settings) => {
-                std::process::Command::new("auth_manager.exe").spawn().unwrap();
-
+                std::process::Command::new("auth_manager.exe")
+                    .spawn()
+                    .unwrap();
             }
             Ok(Message::SetIcon(icon)) => {
                 let c_mode = *mode.lock().unwrap();
@@ -117,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(Message::UpdateTimer) => {
                 if let Some(x) = logout_timer {
                     let time_elapsed = chrono::Local::now() - x;
-        
+
                     if time_elapsed >= chrono::TimeDelta::minutes(TIME_LIMIT) {
                         tx.send(Message::LogOut).unwrap();
                     } else {
@@ -137,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
                 });
             }
             Ok(Message::LogIn(user)) => {
-                if let Ok(res) =  user {
+                if let Ok(res) = user {
                     info!("Login result: {res:?}");
                     logout_timer = Some(chrono::Local::now());
                     let level = res.level;

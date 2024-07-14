@@ -13,6 +13,7 @@ pub enum IconCollor {
 }
 pub enum Message {
     Quit,
+    FatalError,
     Settings,
 
     LogInStart,
