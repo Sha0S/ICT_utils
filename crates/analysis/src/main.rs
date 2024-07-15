@@ -118,7 +118,8 @@ fn get_logs_after_t(
     for file in fs::read_dir(base_path)? {
         let file = file?;
         let path = file.path();
-        if path.is_file() && path.extension().is_none() {
+        let path_ext = path.extension();
+        if path.is_file() && (path_ext.is_none() || path_ext.is_some_and(|f| f == "ict")) {
             if let Ok(x) = path.metadata() {
                 let ct: DateTime<Local> = x.modified().unwrap().into();
                 if ct > t {
