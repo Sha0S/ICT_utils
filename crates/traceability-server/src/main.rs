@@ -8,7 +8,7 @@ use std::{
 };
 
 use chrono::DateTime;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tokio::{net::TcpListener, time::sleep};
 use tray_item::IconSource;
 use winsafe::{co::ES, gui, prelude::*, AnyResult};
@@ -96,33 +96,28 @@ async fn main() -> anyhow::Result<()> {
                 break;
             }
             Ok(Message::Settings) => {
-                std::process::Command::new("auth_manager.exe")
-                    .spawn()
-                    .unwrap();
+                let _ = std::process::Command::new("auth_manager.exe").spawn();
             }
             Ok(Message::SetIcon(icon)) => {
                 let c_mode = *mode.lock().unwrap();
-                match icon {
+
+                let target_col = match icon {
                     IconCollor::Green => match c_mode {
-                        AppMode::None | AppMode::Enabled => {
-                            tray.set_icon(IconSource::Resource("green-icon")).unwrap()
-                        }
-                        AppMode::OffLine => {
-                            tray.set_icon(IconSource::Resource("grey-icon")).unwrap()
-                        }
-                        AppMode::Override => {
-                            tray.set_icon(IconSource::Resource("purple-icon")).unwrap()
-                        }
+                        AppMode::None | AppMode::Enabled => "green-icon",
+                        AppMode::OffLine => "grey-icon",
+                        AppMode::Override => "purple-icon",
                     },
 
-                    IconCollor::Yellow => {
-                        tray.set_icon(IconSource::Resource("yellow-icon")).unwrap()
-                    }
-                    IconCollor::Red => tray.set_icon(IconSource::Resource("red-icon")).unwrap(),
-                    IconCollor::Grey => tray.set_icon(IconSource::Resource("grey-icon")).unwrap(),
-                    IconCollor::Purple => {
-                        tray.set_icon(IconSource::Resource("purple-icon")).unwrap()
-                    }
+                    IconCollor::Yellow => "yellow-icon",
+                    IconCollor::Red => "red-icon",
+                    IconCollor::Grey => "grey-icon",
+                    IconCollor::Purple => "purple-icon",
+                };
+
+                if tray.set_icon(IconSource::Resource(target_col)).is_ok() {
+                    debug!("Icon set to: {target_col}");
+                } else {
+                    warn!("Failed to change icon to: {target_col}");
                 }
             }
             Ok(Message::UpdateTimer) => {
