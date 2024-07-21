@@ -105,11 +105,11 @@ fn write_product(
     let mut total_nok = 0;
     for hour in prod_hourly {
         worksheet.write(row, 1, u64_to_hours(hour.0))?;
-        worksheet.write(row, 2, hour.1 as u32)?;
-        worksheet.write(row, 3, hour.2 as u32)?;
+        worksheet.write(row, 2, hour.1.panels.0 as u32)?;
+        worksheet.write(row, 3, hour.1.panels.1 as u32)?;
 
-        total_ok += hour.1 as u32;
-        total_nok += hour.2 as u32;
+        total_ok += hour.1.panels.0 as u32;
+        total_nok += hour.1.panels.1 as u32;
         row += 1;
     }
 

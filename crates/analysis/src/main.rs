@@ -363,6 +363,9 @@ struct MyApp {
     mode: AppMode,
 
     hourly_stats: Vec<HourlyStats>,
+    hourly_gs: bool,
+    hourly_boards: bool,
+
     multiboard_results: Vec<MbStats>,
 
     selected_test: usize,
@@ -420,6 +423,9 @@ impl Default for MyApp {
 
             mode: AppMode::None,
             hourly_stats: Vec::new(),
+            hourly_gs: false,
+            hourly_boards: false,
+
             multiboard_results: Vec::new(),
 
             selected_test: 0,
@@ -1174,34 +1180,51 @@ impl eframe::App for MyApp {
                                 ui.heading("NOK");
                             });
                             header.col(|ui| {
-                                ui.heading(MESSAGE_H[RESULTS][self.lang]);
+                                ui.horizontal(|ui| {
+                                    ui.heading(MESSAGE_H[RESULTS][self.lang]);
+                                    ui.checkbox(&mut self.hourly_gs, "GS");
+                                    ui.checkbox(&mut self.hourly_boards, "Boards")
+                                });
                             });
                         })
                         .body(|mut body| {
                             for hour in &self.hourly_stats {
                                 let results_per_row =
                                     20.0_f32.max((width_for_last_col / 14.0).floor());
-                                let needed_rows = (hour.3.len() as f32 / results_per_row).ceil();
+                                let needed_rows = (hour.2.len() as f32 / results_per_row).ceil();
+
+                                let used_yield = 
+                                if self.hourly_gs {
+                                    if self.hourly_boards {
+                                        &hour.1.boards_with_gs
+                                    } else {
+                                        &hour.1.panels_with_gs
+                                    }
+                                } else if self.hourly_boards {
+                                    &hour.1.boards
+                                } else {
+                                    &hour.1.panels
+                                };
 
                                 body.row(14.0 * needed_rows, |mut row| {
                                     row.col(|ui| {
                                         ui.label(u64_to_timeframe(hour.0));
                                     });
                                     row.col(|ui| {
-                                        ui.label(format!("{}", hour.1));
+                                        ui.label(format!("{}", used_yield.0));
                                     });
                                     row.col(|ui| {
-                                        ui.label(format!("{}", hour.2));
+                                        ui.label(format!("{}", used_yield.1));
                                     });
                                     row.col(|ui| {
                                         ui.spacing_mut().interact_size = Vec2::new(0.0, 0.0);
                                         ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
 
-                                        let chunks = hour.3.chunks(results_per_row as usize);
+                                        let chunks = hour.2.chunks(results_per_row as usize);
                                         for chunk in chunks {
                                             ui.horizontal(|ui| {
-                                                for (r, _, DMC) in chunk {
-                                                    if draw_result_box(ui, r).clicked() {
+                                                for (r, _, DMC, gs) in chunk {
+                                                    if draw_result_box(ui, r, *gs).clicked() {
                                                         self.info_vp.open_first_NOK(
                                                             DMC.clone(),
                                                             self.log_master.clone(),
@@ -1228,9 +1251,20 @@ impl eframe::App for MyApp {
                         .column(Column::remainder())
                         .body(|mut body| {
                             for (i, mb) in self.multiboard_results.iter().enumerate() {
-                                let color_mb = mb.1.last().unwrap().result.into_dark_color();
+                                let gs = mb.2;
+                                let color_mb = if gs {
+                                    DARK_GOLD
+                                } else {
+                                    mb.1.last().unwrap().result.into_dark_color()
+                                };
+
                                 for (i2, sb) in mb.1.iter().enumerate() {
-                                    let color_sb = sb.result.into_dark_color();
+                                    let color_sb = if gs {
+                                        DARK_GOLD
+                                    } else {
+                                        sb.result.into_dark_color()
+                                    };
+
                                     body.row(15.0, |mut row| {
                                         row.col(|ui| {
                                             if i2 == 0 {
@@ -1272,7 +1306,7 @@ impl eframe::App for MyApp {
                                             ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
                                             ui.horizontal(|ui| {
                                                 for (sb_index, r) in sb.panels.iter().enumerate() {
-                                                    if draw_result_box(ui, r).clicked() {
+                                                    if draw_result_box(ui, r, gs).clicked() {
                                                         self.info_vp.open_w_index(
                                                             mb.0.clone(),
                                                             sb_index,
@@ -1412,7 +1446,7 @@ fn c_formater(point: &egui_plot::PlotPoint, _: &egui_plot::PlotBounds) -> String
     format!("x: {:+1.4E}\t t: {}", point.y, t.format("%F %R"))
 }
 
-fn draw_result_box(ui: &mut egui::Ui, result: &BResult) -> egui::Response {
+fn draw_result_box(ui: &mut egui::Ui, result: &BResult, gs: bool) -> egui::Response {
     let desired_size = egui::vec2(10.0, 10.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 
@@ -1421,7 +1455,12 @@ fn draw_result_box(ui: &mut egui::Ui, result: &BResult) -> egui::Response {
 
         let rect = rect.expand(visuals.expansion);
 
-        ui.painter().rect_filled(rect, 2.0, result.into_color());
+        ui.painter()
+            .rect_filled(rect, 2.0, result.into_dark_color());
+        if gs {
+            ui.painter()
+                .rect_stroke(rect.shrink(1.0), 1.0, Stroke::new(2.0, DARK_GOLD));
+        }
     }
 
     response
