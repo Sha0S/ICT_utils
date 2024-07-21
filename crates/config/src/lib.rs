@@ -1,6 +1,12 @@
 #![allow(non_snake_case)]
 
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+pub const PRODUCT_LIST: &str = "products";
+pub const GOLDEN_LIST: &str = "golden_samples";
 
 /* Product
 '!' starts a comment
@@ -15,37 +21,41 @@ pub struct Product {
     log_dir: PathBuf,
 }
 
-pub fn load_product_list(src: &str, load_all: bool) -> Vec<Product> {
+pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bool) -> Vec<Product> {
     let mut list = Vec::new();
 
-    if let Ok(fileb) = fs::read_to_string(src) {
-        for full_line in fileb.lines() {
-            if !full_line.is_empty() && !full_line.starts_with('!') {
-                let line = &full_line[0..full_line.find('!').unwrap_or(full_line.len())];
-
-                let parts: Vec<&str> = line.split('|').map(|f| f.trim()).collect();
-                if parts.len() < 3 {
-                    continue;
-                }
-
-                let boards_on_panel = parts[1].parse::<u8>().unwrap_or(1);
-                let log_dir = PathBuf::from(parts[2]);
-
-                if log_dir.try_exists().is_ok_and(|x| x) || load_all {
-                    list.push(Product {
-                        name: parts[0].to_owned(),
-                        patterns: parts.iter().skip(3).map(|f| f.to_string()).collect(),
-                        boards_on_panel,
-                        log_dir,
-                    });
-                }
-            }
+    for line in filter_file(path) {
+        let parts: Vec<&str> = line.split('|').map(|f| f.trim()).collect();
+        if parts.len() < 3 {
+            continue;
         }
-    } else {
-        println!("ERR: source ({src}) not readable!");
+
+        let boards_on_panel = parts[1].parse::<u8>().unwrap_or(1);
+        let log_dir = PathBuf::from(parts[2]);
+
+        if log_dir.try_exists().is_ok_and(|x| x) || load_all {
+            list.push(Product {
+                name: parts[0].to_owned(),
+                patterns: parts.iter().skip(3).map(|f| f.to_string()).collect(),
+                boards_on_panel,
+                log_dir,
+            });
+        }
     }
 
     list
+}
+
+pub fn get_product_for_serial<P: AsRef<Path> + std::fmt::Debug>(path: P, serial: &str) -> Option<Product> {
+    let list = load_product_list(path, true);
+
+    for product in list {
+        if product.check_serial(serial) {
+            return Some(product)
+        }
+    }
+
+    None
 }
 
 impl Product {
@@ -83,7 +93,7 @@ pub struct Config {
 
     log_reader: String,
     MES_server: String,
-    station_name: String
+    station_name: String,
 }
 
 impl Config {
@@ -173,18 +183,38 @@ impl Config {
 
 /* Utillity */
 
-pub fn load_gs_list(path: PathBuf) -> Vec<String> {
+fn filter_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Vec<String> {
     let mut list = Vec::new();
 
-    if let Ok(fileb) = fs::read_to_string(path) {
-        list = fileb
-            .lines()
-            .filter(|f| !f.starts_with('!'))
-            .map(|f| f.to_owned())
-            .collect();
+    if let Ok(fileb) = fs::read_to_string(&path) {
+        for full_line in fileb.lines() {
+            if !full_line.is_empty() && !full_line.starts_with('!') {
+                let line = &full_line[0..full_line.find('!').unwrap_or(full_line.len())];
+                list.push(line.trim().to_string());
+            }
+        }
+    } else {
+        println!("ERR: source ({:?}) not readable!", path);
     }
 
     list
+}
+
+pub fn load_gs_list<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Vec<String> {
+    filter_file(path)
+}
+
+pub fn load_gs_list_for_product<P: AsRef<Path> + std::fmt::Debug>(path: P, product: &Product) -> Vec<String> {
+    let all_gs = load_gs_list(path);
+    let mut ret = Vec::new();
+
+    for gs in all_gs {
+        if product.check_serial(&gs) {
+            ret.push(gs);
+        }
+    }
+
+    ret
 }
 
 pub fn get_pos_from_logname(log_file_name: &str) -> u8 {
