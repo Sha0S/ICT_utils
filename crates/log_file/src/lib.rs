@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use umya_spreadsheet::{self, Worksheet};
+use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
 mod keysight_log;
 
@@ -113,7 +114,7 @@ pub type TResult = (BResult, f32);
 type TList = (String, TType);
 
 // OK - NOK
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct Yield(pub u16, pub u16);
 impl AddAssign for Yield {
     fn add_assign(&mut self, x: Self) {
@@ -270,6 +271,8 @@ impl From<&str> for BResult {
         BResult::Fail
     }
 }
+
+pub const DARK_GOLD: egui::Color32 = egui::Color32::from_rgb(235, 195, 0);
 
 impl BResult {
     pub fn print(&self) -> String {
@@ -1285,6 +1288,7 @@ pub struct MbResult {
 }
 struct MultiBoard {
     DMC: String,
+    golden_sample: bool,
     boards: Vec<Board>,
 
     // ( Start time, Multiboard test result, <Result of the individual boards>)
@@ -1295,6 +1299,7 @@ impl MultiBoard {
     fn new() -> Self {
         Self {
             DMC: String::new(),
+            golden_sample: false,
             boards: Vec::new(),
             results: Vec::new(),
             //first_res: BResult::Unknown,
@@ -1314,6 +1319,10 @@ impl MultiBoard {
 
         self.boards[log.index - 1].push(log)
     }
+
+    fn set_gs(&mut self) {
+        self.golden_sample = true;
+    } 
 
     // Generating stats for self, and reporting single-board stats.
     fn update(&mut self) -> (Yield, Yield, Yield) {
@@ -1482,14 +1491,25 @@ pub struct LogFileHandler {
     sb_total_yield: Yield,
 
     product_id: String, // Product identifier
+    product: Option<Product>,
+    golden_samples: Vec<String>,
+
     testlist: Vec<TList>,
     multiboards: Vec<MultiBoard>,
 
     sourcelist: HashSet<OsString>,
 }
 
-pub type HourlyStats = (u64, usize, usize, Vec<(BResult, u64, String)>); // (time, OK, NOK, Vec<Results>)
-pub type MbStats = (String, Vec<MbResult>); // (DMC, Vec<(time, Multiboard result, Vec<Board results>)>)
+#[derive(Default)]
+pub struct HourlyYield {
+    pub panels: Yield,
+    pub panels_with_gs: Yield,
+    pub boards: Yield,
+    pub boards_with_gs: Yield
+}
+
+pub type HourlyStats = (u64, HourlyYield, Vec<(BResult, u64, String, bool)>); // (time, [(OK, NOK), (OK, NOK with gs)], Vec<Results>) 
+pub type MbStats = (String, Vec<MbResult>, bool); // (DMC, Vec<(time, Multiboard result, Vec<Board results>)>, golden_sample)
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum FlSettings {
@@ -1515,6 +1535,8 @@ impl LogFileHandler {
             mb_total_yield: Yield(0, 0),
             sb_total_yield: Yield(0, 0),
             product_id: String::new(),
+            product: None,
+            golden_samples: Vec::new(),
             testlist: Vec::new(),
             multiboards: Vec::new(),
             sourcelist: HashSet::new(),
@@ -1548,13 +1570,27 @@ impl LogFileHandler {
             println!("\t\tINFO: Initializing as {}", log.product_id);
             self.product_id = log.product_id.to_owned();
 
+            if let Some(product) = get_product_for_serial(ICT_config::PRODUCT_LIST, &log.DMC_mb) {
+                self.golden_samples = load_gs_list_for_product(ICT_config::GOLDEN_LIST, &product);
+                self.product = Some(product);
+            }
+
+            println!("\t\t\tProduct is: {:?}", self.product);
+            println!("\t\t\tGolden samples: {:?}", self.golden_samples);
+
             // Create testlist
             for t in log.tests.iter() {
                 self.testlist.push((t.name.to_owned(), t.ttype));
             }
 
             self.multiboards.push(MultiBoard::new());
+
+            if self.golden_samples.contains(&log.DMC_mb) {
+                self.multiboards[0].set_gs();
+            }
+
             self.multiboards[0].push(log)
+
         } else {
             // Check if it is for the same type.
             // Mismatched types are not supported. (And ATM I see no reason to do that.)
@@ -1644,6 +1680,11 @@ impl LogFileHandler {
 
             // If it does not, then make a new one
             let mut mb = MultiBoard::new();
+
+            if self.golden_samples.contains(&log.DMC_mb) {
+                mb.set_gs();
+            }
+
             let rv = mb.push(log);
             self.multiboards.push(mb);
             rv
@@ -1713,9 +1754,11 @@ impl LogFileHandler {
 
     pub fn clear(&mut self) {
         //self.pp_multiboard = 0;
-        self.product_id = String::new();
-        self.testlist = Vec::new();
-        self.multiboards = Vec::new();
+        self.product_id.clear();
+        self.product = None;
+        self.golden_samples.clear();
+        self.testlist.clear();
+        self.multiboards.clear();
         self.sourcelist.clear();
     }
 
@@ -1819,22 +1862,56 @@ impl LogFileHandler {
                 for r in &mut ret {
                     if r.0 == time {
                         if res.result == BResult::Pass {
-                            r.1 += 1;
+                            r.1.panels_with_gs.0 += 1;
+                            r.1.boards_with_gs.0 += self.pp_multiboard as u16;
+
+                            if !mb.golden_sample {
+                                r.1.panels.0 += 1;
+                                r.1.boards.0 += self.pp_multiboard as u16;
+                            }
                         } else {
-                            r.2 += 1;
+                            let failed_boards = res.panels.iter().filter(|f| **f == BResult::Fail).count() as u16;
+
+                            r.1.panels_with_gs.1 += 1;
+                            r.1.boards_with_gs.1 += failed_boards;
+
+                            if !mb.golden_sample {
+                                r.1.panels.1 += 1;
+                                r.1.boards.1 += failed_boards;
+                            }
                         }
 
-                        r.3.push((res.result, time_2, mb.DMC.clone()));
+                        r.2.push((res.result, time_2, mb.DMC.clone(), mb.golden_sample));
 
                         continue 'resfor;
                     }
                 }
 
+                let mut hourly = HourlyYield::default();
+                if res.result == BResult::Pass {
+                    hourly.panels_with_gs.0 += 1;
+                    hourly.boards_with_gs.0 += self.pp_multiboard as u16;
+
+                    if !mb.golden_sample {
+                        hourly.panels.0 += 1;
+                        hourly.boards.0 += self.pp_multiboard as u16;
+                    }
+                } else {
+                    let failed_boards = res.panels.iter().filter(|f| **f == BResult::Fail).count() as u16;
+
+                    hourly.panels_with_gs.1 += 1;
+                    hourly.boards_with_gs.1 += failed_boards;
+
+                    if !mb.golden_sample {
+                        hourly.panels.1 += 1;
+                        hourly.boards.1 += failed_boards;
+                    }
+                }
+
                 ret.push((
                     time,
-                    if res.result == BResult::Pass { 1 } else { 0 },
-                    if res.result != BResult::Pass { 1 } else { 0 },
-                    vec![(res.result, time_2, mb.DMC.clone())],
+                    hourly,
+                    vec![(res.result, time_2, mb.DMC.clone(), mb.golden_sample)],
                 ));
             }
         }
@@ -1842,7 +1919,7 @@ impl LogFileHandler {
         ret.sort_by_key(|k| k.0);
 
         for r in &mut ret {
-            r.3.sort_by_key(|k| k.1);
+            r.2.sort_by_key(|k| k.1);
         }
 
         ret
@@ -1853,7 +1930,7 @@ impl LogFileHandler {
         let mut ret: Vec<MbStats> = Vec::new();
 
         for mb in &self.multiboards {
-            ret.push((mb.DMC.clone(), mb.get_results().clone()));
+            ret.push((mb.DMC.clone(), mb.get_results().clone(), mb.golden_sample));
         }
 
         ret.sort_by_key(|k| k.1.last().unwrap().start);

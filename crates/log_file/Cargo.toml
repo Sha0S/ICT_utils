@@ -10,3 +10,5 @@ egui = "0"
 chrono = "0"
 umya-spreadsheet = "1"
 rust_xlsxwriter = { version = "0.68.0", features = ["chrono"] }
+
+ICT_config = { path = "..\\config"}
