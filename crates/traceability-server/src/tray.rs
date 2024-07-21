@@ -4,6 +4,7 @@ use tray_item::{IconSource, TrayItem};
 
 use crate::{AppMode, UserLevel};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IconCollor {
     Green,
     Yellow,

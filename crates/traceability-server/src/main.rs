@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let (mut tray, tray_ids) = init_tray(tx.clone());
     let mut active_user: Option<User> = None;
     let mut logout_timer: Option<DateTime<chrono::Local>> = None;
+    let mut last_color = String::new();
 
     let timer_tx = tx.clone();
     tokio::spawn(async move {
@@ -99,6 +100,8 @@ async fn main() -> anyhow::Result<()> {
                 let _ = std::process::Command::new("auth_manager.exe").spawn();
             }
             Ok(Message::SetIcon(icon)) => {
+                debug!("Icon change requested: {:?}", icon);
+
                 let c_mode = *mode.lock().unwrap();
 
                 let target_col = match icon {
@@ -114,8 +117,12 @@ async fn main() -> anyhow::Result<()> {
                     IconCollor::Purple => "purple-icon",
                 };
 
+                if target_col == last_color {
+                    continue;
+                }
                 if tray.set_icon(IconSource::Resource(target_col)).is_ok() {
                     debug!("Icon set to: {target_col}");
+                    last_color = target_col.to_owned();
                 } else {
                     warn!("Failed to change icon to: {target_col}");
                 }
