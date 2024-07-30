@@ -1,12 +1,16 @@
 [package]
 name = "ICT_utils"
-version = "2.6.9"
+version = "2.7.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
 members = ["crates/*"]
+
+[[bin]]
+name = "aoi_uploader"
+path = ".\\crates\\aoi_uploader\\src\\main.rs"
 
 [[bin]]
 name = "auth_manager"
@@ -61,6 +65,7 @@ tokio-stream = "0.1.15"
 tray-item = "0.10.0"
 pwhash = "1"
 winsafe = { version = "0.0.21", features = ["gui"] }
+roxmltree = "0.20.0"
 
 # cargo update bitstream-io --precise 2.3.0
 # cargo update ravif --precise 0.11.6

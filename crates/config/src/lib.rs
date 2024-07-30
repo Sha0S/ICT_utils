@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub const CONFIG: &str = "config.ini";
 pub const PRODUCT_LIST: &str = "products";
 pub const GOLDEN_LIST: &str = "golden_samples";
 
@@ -94,13 +95,17 @@ pub struct Config {
     log_reader: String,
     MES_server: String,
     station_name: String,
+
+    AOI_dir: String,
+    AOI_chunks: usize,
 }
 
 impl Config {
-    pub fn read(path: PathBuf) -> anyhow::Result<Config> {
+    pub fn read<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
+        let path = path.as_ref();
         let mut c = Config::default();
 
-        if let Ok(config) = ini::Ini::load_from_file(path.clone()) {
+        if let Ok(config) = ini::Ini::load_from_file(path) {
             if let Some(jvserver) = config.section(Some("JVSERVER")) {
                 // mandatory fields:
                 if let Some(server) = jvserver.get("SERVER") {
@@ -142,6 +147,16 @@ impl Config {
                     c.station_name = station.to_owned();
                 }
             }
+
+            if let Some(app) = config.section(Some("AOI")) {
+                if let Some(dir) = app.get("DIR") {
+                    c.AOI_dir = dir.to_owned();
+                }
+
+                if let Some(chunks) = app.get("CHUNKS") {
+                    c.AOI_chunks = chunks.parse().unwrap_or(10);
+                }
+            }
         } else {
             return Err(anyhow::Error::msg(format!(
                 "ER: Could not read configuration file! [{}]",
@@ -178,6 +193,14 @@ impl Config {
 
     pub fn get_station_name(&self) -> &str {
         &self.station_name
+    }
+
+    pub fn get_AOI_dir(&self) -> &str {
+        &self.AOI_dir
+    }
+
+    pub fn get_AOI_chunks(&self) -> usize {
+        self.AOI_chunks
     }
 }
 
