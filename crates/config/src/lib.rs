@@ -97,6 +97,7 @@ pub struct Config {
     station_name: String,
 
     AOI_dir: String,
+    AOI_line: String,
     AOI_chunks: usize,
 }
 
@@ -153,6 +154,10 @@ impl Config {
                     c.AOI_dir = dir.to_owned();
                 }
 
+                if let Some(dir) = app.get("LINE") {
+                    c.AOI_line = dir.to_owned();
+                }
+
                 if let Some(chunks) = app.get("CHUNKS") {
                     c.AOI_chunks = chunks.parse().unwrap_or(10);
                 }
@@ -197,6 +202,10 @@ impl Config {
 
     pub fn get_AOI_dir(&self) -> &str {
         &self.AOI_dir
+    }
+
+    pub fn get_AOI_line(&self) -> &str {
+        &self.AOI_line
     }
 
     pub fn get_AOI_chunks(&self) -> usize {

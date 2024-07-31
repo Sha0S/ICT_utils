@@ -68,7 +68,7 @@ fn get_entries<P: AsRef<Path>>(dir: P) -> Vec<PathBuf> {
 
 /*
 - Serial_NMBR: VARCHAR[30]
-- Board_NMBR: INT // The board number in the XML is wrong!
+- Board_NMBR: TINYINT // The board number in the XML is wrong!
 - Program: VARCHAR[30]
 - Station: VARCHAR[30]
 - Operator: VARCHAR[30] (allow NULL)
@@ -80,6 +80,8 @@ fn get_entries<P: AsRef<Path>>(dir: P) -> Vec<PathBuf> {
 
 #[derive(Debug, Default)]
 struct Panel {
+    path: PathBuf,
+
     Program: String,
     Station: String,
     Operator: String,
@@ -94,12 +96,14 @@ struct Board {
     Serial_NMBR: String,
     Board_NMBR: usize,
     Result: String,
-    Pseudo_Errors: String,
-    True_Errors: String,
+    Failed: Vec<String>,
 }
 
-fn parse_xml(path: &PathBuf) -> Result<Panel> {
-    let mut ret = Panel::default();
+fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
+    let mut ret = Panel {
+        path: path.clone(),
+        ..Default::default()
+    };
 
     let file = std::fs::read_to_string(path)?;
     let xml = roxmltree::Document::parse(&file)?;
@@ -114,12 +118,12 @@ fn parse_xml(path: &PathBuf) -> Result<Panel> {
     {
         for sub_child in ginfo.children().filter(|f| f.is_element()) {
             match sub_child.tag_name().name() {
-                "Station" => {
+                /*"Station" => {
                     if let Some(x) = sub_child.children().find(|f| f.has_tag_name("Name")) {
                         ret.Station = x.text().unwrap_or_default().to_owned();
                         debug!("Station: {}", ret.Station);
                     }
-                }
+                }*/
                 "Program" => {
                     if let Some(x) = sub_child
                         .children()
@@ -246,7 +250,7 @@ fn parse_xml(path: &PathBuf) -> Result<Panel> {
         }
     }
 
-    /* TO DO
+    
     if repaired {
         debug!("Searching for repair information");
         if let Some(comp_info) = root
@@ -256,7 +260,20 @@ fn parse_xml(path: &PathBuf) -> Result<Panel> {
 
         }
     }
-    */
+    
+    // Sort boards, so they will be in the "correct" order
+    ret.Boards.sort_by(|p1, p2| p1.Serial_NMBR.cmp(&p2.Serial_NMBR));
+    // Set board number to the "correct" value
+    for (i,b) in ret.Boards.iter_mut().enumerate() {
+        b.Board_NMBR = i+1;
+    }
+
+    // Set station name
+    ret.Station = if repaired {
+        format!("{}_HARAN", line)
+    } else {
+        format!("{}_AOI_AXI", line)
+    };
 
     Ok(ret)
 }
@@ -271,7 +288,7 @@ async fn connect(
     Ok(client)
 }
 
-async fn upload_panels(panels: Vec<Panel>, config: &ICT_config::Config) -> Result<()> {
+async fn upload_panels(panels: &Vec<Panel>, config: &ICT_config::Config) -> Result<()> {
     if panels.is_empty() {
         error!("Panel buffer is empty!");
         bail!("Panel buffer is empty!");
@@ -309,14 +326,14 @@ async fn upload_panels(panels: Vec<Panel>, config: &ICT_config::Config) -> Resul
     // Upload new results
     let mut qtext = String::from(
         "INSERT INTO [dbo].[SMT_AOI] 
-        ([Serial_NMBR], [Board_NMBR], [Program], [Station], [Operator], [Result], [Date_Time], [True_Errors], [Pseudo_Errors])
+        ([Serial_NMBR], [Board_NMBR], [Program], [Station], [Operator], [Result], [Date_Time], [Failed])
         VALUES",
     );
 
     for panel in panels {
-        for board in panel.Boards {
+        for board in &panel.Boards {
             qtext += &format!(
-                "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
+                "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
                 board.Serial_NMBR,
                 board.Board_NMBR,
                 panel.Program,
@@ -328,8 +345,7 @@ async fn upload_panels(panels: Vec<Panel>, config: &ICT_config::Config) -> Resul
                 } else {
                     panel.Repair_DT
                 },
-                board.True_Errors,
-                board.Pseudo_Errors
+                board.Failed.join(", "),
             );
         }
     }
@@ -400,7 +416,7 @@ async fn main() -> Result<()> {
             let entries = get_entries(&dir);
             for chunk in entries.chunks(chunks) {
                 for entry in chunk {
-                    if let Ok(panel) = parse_xml(entry) {
+                    if let Ok(panel) = parse_xml(entry, config.get_AOI_line()) {
                         panels.push(panel);
                     } else {
                         error!("XML parsing failed!");
@@ -408,20 +424,20 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                if upload_panels(panels, &config).await.is_ok() {
-                    for entry in chunk {
-                        if entry.exists() {
-                            if let Ok(path) = new_path(&dir, entry) {
-                                if fs::rename(entry, path).is_err() {
-                                    error!("Failed to move {:?}", entry);
+                if upload_panels(&panels, &config).await.is_ok() {
+                    for panel in panels {
+                        if panel.path.exists() {
+                            if let Ok(path) = new_path(&dir, &panel.path) {
+                                if fs::rename(&panel.path, path).is_err() {
+                                    error!("Failed to move {:?}", panel.path);
                                     sql_tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
                                 }
                             } else {
-                                error!("Failed to make destination path for {:?}", entry);
+                                error!("Failed to make destination path for {:?}", panel.path);
                                 sql_tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
                             }
                         } else {
-                            error!("Entry does not exist anymore: {:?}", entry);
+                            error!("Entry does not exist anymore: {:?}", panel.path);
                             sql_tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
                         }
                     }
