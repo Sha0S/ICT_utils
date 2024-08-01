@@ -51,17 +51,27 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     (tray, ret)
 }
 
-fn get_entries<P: AsRef<Path>>(dir: P) -> Vec<PathBuf> {
+/*
+    Get the [.xml] files in the target [dir], which don't end in "_AOI" or "_AXI"
+*/
+fn get_entries<P: AsRef<Path> + std::fmt::Debug>(dir: P) -> Vec<PathBuf> {
     let mut ret = Vec::new();
 
-    if let Ok(entries) = fs::read_dir(dir) {
+    if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() && path.extension().is_some_and(|e| e == "xml" || e == "XML") {
-                ret.push(path);
+                if let Some(filestem) = path.file_stem() {
+                    let filestem = filestem.to_string_lossy();
+                    if !(filestem.ends_with("_AOI") || filestem.ends_with("_AXI")) {
+                        ret.push(path);
+                    }
+                }
             }
         }
     }
+
+    debug!("Scanned {dir:?}, found {} entries.", ret.len());
 
     ret
 }
@@ -74,8 +84,7 @@ fn get_entries<P: AsRef<Path>>(dir: P) -> Vec<PathBuf> {
 - Operator: VARCHAR[30] (allow NULL)
 - Result: VARCHAR[10]
 - Date_Time: DATETIME
-- Pseudo_Errors: VARCHAR[MAX] (allow NULL)
-- True_Errors:   VARCHAR[MAX] (allow NULL)
+- Failed: VARCHAR[500] (allow NULL)
 */
 
 #[derive(Debug, Default)]
@@ -100,6 +109,8 @@ struct Board {
 }
 
 fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
+    debug!("Processing XML: {path:?}");
+
     let mut ret = Panel {
         path: path.clone(),
         ..Default::default()
@@ -250,22 +261,133 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
         }
     }
 
-    
     if repaired {
-        debug!("Searching for repair information");
+        debug!("XML is for repair station. Searching for repair information");
         if let Some(comp_info) = root
-        .children()
-        .find(|f| f.has_tag_name("ComponentInformation"))
+            .children()
+            .find(|f| f.has_tag_name("ComponentInformation"))
         {
+            for window in comp_info.children().filter(|f| f.is_element()) {
+                let mut WinID = String::new();
+                let mut PCBNumber = String::new();
+                let mut Result = String::new();
 
+                for sub_child in window.children().filter(|f| f.is_element()) {
+                    match sub_child.tag_name().name() {
+                        "WinID" => {
+                            WinID = sub_child.text().unwrap_or_default().to_string();
+                        }
+                        "PCBNumber" => {
+                            PCBNumber = sub_child.text().unwrap_or_default().to_string();
+                        }
+                        "Result" => {
+                            if let Some(t) = sub_child
+                                .children()
+                                .find(|f| f.has_tag_name("ErrorDescription"))
+                            {
+                                Result = t.text().unwrap_or_default().to_string();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !(WinID.is_empty() || PCBNumber.is_empty() || Result.is_empty()) {
+                    debug!(
+                        "Window found! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}"
+                    );
+
+                    if Result != "Pszeudohiba" {
+                        if let Ok(x) = PCBNumber.parse::<usize>() {
+                            if let Some(board) = ret.Boards.get_mut(x) {
+
+                                if let Some(c) = WinID.rfind('-') {
+                                    let split = WinID.split_at(c);
+                                    WinID = split.0.to_string();
+                                }
+                                
+                                board.Failed.push(WinID);
+                            }
+                        } else {
+                            error!("Could not parse PCBNumber: {PCBNumber}");
+                        }
+                    } else {
+                        debug!("Window marked as pseudo error.");
+                    }
+                } else {
+                    error!("Window interpreting error! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}");
+                }
+            }
+        }
+    } else if failed {
+        debug!("XML is for AOI/AXI station. Searching for failed windows.");
+        if let Some(comp_info) = root
+            .children()
+            .find(|f| f.has_tag_name("ComponentInformation"))
+        {
+            for window in comp_info.children().filter(|f| f.is_element()) {
+                let mut WinID = String::new();
+                let mut PCBNumber = String::new();
+                let mut Result = String::new();
+
+                for sub_child in window.children().filter(|f| f.is_element()) {
+                    match sub_child.tag_name().name() {
+                        "WinID" => {
+                            WinID = sub_child.text().unwrap_or_default().to_string();
+                        }
+                        "PCBNumber" => {
+                            PCBNumber = sub_child.text().unwrap_or_default().to_string();
+                        }
+                        "Analysis" => {
+                            if let Some(t) = sub_child.children().find(|f| f.has_tag_name("Result"))
+                            {
+                                Result = t.text().unwrap_or_default().to_string();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !(WinID.is_empty() || PCBNumber.is_empty() || Result.is_empty())
+                {
+                    if Result != "0" {
+                        debug!(
+                            "Window found! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}"
+                        );
+    
+                        if let Ok(x) = PCBNumber.parse::<usize>() {
+                            if x == 0 {
+                                error!("BoardNumber is 0. Was excepting 1+");
+                            } else if let Some(board) = ret.Boards.get_mut(x-1) {
+
+                                if let Some(c) = WinID.rfind('-') {
+                                    let split = WinID.split_at(c);
+                                    WinID = split.0.to_string();
+                                }
+
+                                board.Failed.push(WinID);
+                            } else {
+                                error!("Could not find board number {x}");
+                            }
+
+                        } else {
+                            error!("Could not parse PCBNumber: {PCBNumber}");
+                        }
+                    }
+
+                } else {
+                    error!("Window interpreting error! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}");
+                }
+            }
         }
     }
-    
+
     // Sort boards, so they will be in the "correct" order
-    ret.Boards.sort_by(|p1, p2| p1.Serial_NMBR.cmp(&p2.Serial_NMBR));
+    ret.Boards
+        .sort_by(|p1, p2| p1.Serial_NMBR.cmp(&p2.Serial_NMBR));
     // Set board number to the "correct" value
-    for (i,b) in ret.Boards.iter_mut().enumerate() {
-        b.Board_NMBR = i+1;
+    for (i, b) in ret.Boards.iter_mut().enumerate() {
+        b.Board_NMBR = i + 1;
     }
 
     // Set station name
@@ -332,6 +454,9 @@ async fn upload_panels(panels: &Vec<Panel>, config: &ICT_config::Config) -> Resu
 
     for panel in panels {
         for board in &panel.Boards {
+            let mut fails = board.Failed.join(", ");
+            fails.truncate(490);
+
             qtext += &format!(
                 "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
                 board.Serial_NMBR,
@@ -345,7 +470,7 @@ async fn upload_panels(panels: &Vec<Panel>, config: &ICT_config::Config) -> Resu
                 } else {
                     panel.Repair_DT
                 },
-                board.Failed.join(", "),
+                fails
             );
         }
     }
