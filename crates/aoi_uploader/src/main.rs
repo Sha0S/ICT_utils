@@ -77,6 +77,7 @@ fn get_entries<P: AsRef<Path> + std::fmt::Debug>(dir: P) -> Vec<PathBuf> {
 }
 
 /*
+SQL fields:
 - Serial_NMBR: VARCHAR[30]
 - Board_NMBR: TINYINT // The board number in the XML is wrong!
 - Program: VARCHAR[30]
@@ -305,7 +306,7 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
                                     let split = WinID.split_at(c);
                                     WinID = split.0.to_string();
                                 }
-                                
+
                                 board.Failed.push(WinID);
                             }
                         } else {
@@ -400,6 +401,9 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
     Ok(ret)
 }
 
+/*
+    Connect to the SQL database
+*/
 async fn connect(
     tib_config: tiberius::Config,
 ) -> anyhow::Result<tiberius::Client<tokio_util::compat::Compat<TcpStream>>> {
@@ -485,6 +489,10 @@ async fn upload_panels(panels: &Vec<Panel>, config: &ICT_config::Config) -> Resu
     Ok(())
 }
 
+/*
+    Generates a new path, using the modified date as a subdir:
+        {dir}/{yyyy_mm_dd}/{filename}
+*/
 fn new_path(dir: &Path, path: &Path) -> Result<PathBuf> {
     if let Ok(x) = path.metadata() {
         let ct: DateTime<Local> = x.modified()?.into();
@@ -580,6 +588,7 @@ async fn main() -> Result<()> {
     let (mut tray, _) = init_tray(tx.clone());
     let mut last_color = String::new();
 
+    // Tray event loop
     loop {
         match rx.recv() {
             Ok(Message::Quit) => {
