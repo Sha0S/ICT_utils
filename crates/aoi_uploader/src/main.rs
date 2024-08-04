@@ -3,7 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use anyhow::{bail, Result};
-use chrono::{DateTime, Local, NaiveDateTime};
+use chrono::{DateTime, Datelike, Local, NaiveDateTime};
 use log::{debug, error, info, warn};
 use std::{
     fs,
@@ -110,7 +110,7 @@ struct Board {
 }
 
 fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
-    debug!("Processing XML: {path:?}");
+    info!("Processing XML: {path:?}");
 
     let mut ret = Panel {
         path: path.clone(),
@@ -182,7 +182,7 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
                         .children()
                         .find(|f| f.has_tag_name("OperatorName"))
                     {
-                        ret.Operator = x.text().unwrap_or_default().to_owned();
+                        ret.Operator = x.text().unwrap_or_default().to_uppercase();
                         debug!("OperatorName: {}", ret.Operator);
                     }
 
@@ -223,6 +223,14 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
         bail!("Could not find <GlobalInformation>!");
     }
 
+    if ret.Program.is_empty()
+        || ret.Inspection_DT.year() < 2000
+        || (repaired && ret.Repair_DT.year() < 2000)
+    {
+        error!("Missing mandatory <GlobalInformation> elements!");
+        bail!("Missing mandatory <GlobalInformation> elements!");
+    }
+
     if let Some(pcb_info) = root.children().find(|f| f.has_tag_name("PCBInformation")) {
         let count = pcb_info.children().filter(|f| f.is_element()).count();
         debug!("PCB count: {}", count);
@@ -259,6 +267,13 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
                 error!("SinglePCB sub-fields missing!");
                 bail!("SinglePCB sub-fields missing!");
             }
+        }
+    }
+
+    for board in &ret.Boards {
+        if board.Serial_NMBR.is_empty() || board.Result.is_empty() {
+            error!("Board serial or result is missing!");
+            bail!("Board serial or result is missing!");
         }
     }
 
@@ -301,22 +316,25 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
                     if Result != "Pszeudohiba" {
                         if let Ok(x) = PCBNumber.parse::<usize>() {
                             if let Some(board) = ret.Boards.get_mut(x) {
-
                                 if let Some(c) = WinID.rfind('-') {
                                     let split = WinID.split_at(c);
                                     WinID = split.0.to_string();
                                 }
 
-                                board.Failed.push(WinID);
+                                if !board.Failed.contains(&WinID) {
+                                    board.Failed.push(WinID);
+                                }
                             }
                         } else {
                             error!("Could not parse PCBNumber: {PCBNumber}");
+                            bail!("Could not parse PCBNumber: {PCBNumber}");
                         }
                     } else {
                         debug!("Window marked as pseudo error.");
                     }
                 } else {
                     error!("Window interpreting error! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}");
+                    bail!("Window interpreting error! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}");
                 }
             }
         }
@@ -349,35 +367,37 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
                     }
                 }
 
-                if !(WinID.is_empty() || PCBNumber.is_empty() || Result.is_empty())
-                {
+                if !(WinID.is_empty() || PCBNumber.is_empty() || Result.is_empty()) {
                     if Result != "0" {
                         debug!(
                             "Window found! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}"
                         );
-    
+
                         if let Ok(x) = PCBNumber.parse::<usize>() {
                             if x == 0 {
                                 error!("BoardNumber is 0. Was excepting 1+");
-                            } else if let Some(board) = ret.Boards.get_mut(x-1) {
-
+                                bail!("BoardNumber is 0. Was excepting 1+");
+                            } else if let Some(board) = ret.Boards.get_mut(x - 1) {
                                 if let Some(c) = WinID.rfind('-') {
                                     let split = WinID.split_at(c);
                                     WinID = split.0.to_string();
                                 }
 
-                                board.Failed.push(WinID);
+                                if !board.Failed.contains(&WinID) {
+                                    board.Failed.push(WinID);
+                                }
                             } else {
                                 error!("Could not find board number {x}");
+                                bail!("Could not find board number {x}");
                             }
-
                         } else {
                             error!("Could not parse PCBNumber: {PCBNumber}");
+                            bail!("Could not parse PCBNumber: {PCBNumber}");
                         }
                     }
-
                 } else {
                     error!("Window interpreting error! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}");
+                    bail!("Window interpreting error! WinID: {WinID}, PCBNumber: {PCBNumber}, Result: {Result}");
                 }
             }
         }
@@ -397,6 +417,8 @@ fn parse_xml(path: &PathBuf, line: &str) -> Result<Panel> {
     } else {
         format!("{}_AOI_AXI", line)
     };
+
+    info!("Processing OK.");
 
     Ok(ret)
 }
