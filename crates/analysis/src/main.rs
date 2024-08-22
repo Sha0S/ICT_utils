@@ -783,6 +783,7 @@ impl eframe::App for MyApp {
             // Failure list:
 
             ui.vertical(|ui| {
+                ui.set_enabled(!self.loading);
                 ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
                 ui.separator();
 
