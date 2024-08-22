@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "ICT_utils"
-version = "2.7.0"
+version = "2.7.1"
 dependencies = [
  "ICT_auth",
  "ICT_config",
@@ -121,8 +121,8 @@ dependencies = [
  "egui_extras",
  "egui_plot",
  "embed-resource",
- "env_logger 0.11.3",
- "image 0.25.1",
+ "env_logger 0.9.3",
+ "image 0.24.9",
  "log",
  "once_cell",
  "pwhash",
