@@ -129,10 +129,10 @@ impl Panel {
         self.serials.is_empty()
     }
 
-    fn new(boards: u8, product: String) -> Self {
+    fn new(product: &Product) -> Self {
         Panel {
-            boards,
-            product,
+            boards: product.get_bop(),
+            product: product.get_name().to_string(),
             selected_pos: 0,
             serials: Vec::new(),
             results: Vec::new(),
@@ -281,20 +281,22 @@ impl eframe::App for IctResultApp {
                     text_edit.state.store(ui.ctx(), text_edit.response.id);
 
                     // Identify product type
-                    let mut boards_on_panel = 1;
-                    let mut product_name = "Unknown".to_string();
                     println!("Product id: {}", &DMC[13..]);
-                    for product in &self.products {
-                        println!("{:?}", product);
-                        if product.check_serial(&DMC) {
-                            println!("Product is: {}", product.get_name());
-                            product_name = product.get_name().to_string();
-                            boards_on_panel = product.get_bop();
-                            break;
-                        }
-                    }
 
-                    self.panel = Arc::new(Mutex::new(Panel::new(boards_on_panel, product_name)));
+                    let product = 'prod: {
+                        for p in &self.products {
+                            println!("{:?}", p);
+                            if p.check_serial(&DMC) {
+                                println!("Product is: {}", p.get_name());
+                                break 'prod p.clone()                          
+                            }
+                        };
+
+                        Product::unknown()
+                    };                    
+                    
+
+                    self.panel = Arc::new(Mutex::new(Panel::new(&product)));
 
                     // 1 - query to given DMC
                     // 2 - from Log_file_name get the board position
@@ -333,7 +335,7 @@ impl eframe::App for IctResultApp {
                                         let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
                                         
                                          
-                                        position = get_pos_from_logname(&log_file_name).min(boards_on_panel);
+                                        position = product.get_pos_from_logname(&log_file_name).min(product.get_bop());
 
                                         panel_lock.lock().unwrap().push(position, serial, station, result, date_time, log_file_name);
 
@@ -344,8 +346,8 @@ impl eframe::App for IctResultApp {
                             }
                         }
 
-                        if boards_on_panel > 1 && !failed_query {
-                            for i in 0..boards_on_panel {
+                        if product.get_bop() > 1 && !failed_query {
+                            for i in 0..product.get_bop() {
                                 if i == position {
                                     continue;
                                 }

@@ -14,12 +14,13 @@ pub const GOLDEN_LIST: &str = "golden_samples";
 Product Name | Boards on panel | Log file directory | DMC patterns
 */
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct Product {
     name: String,
     patterns: Vec<String>,
     boards_on_panel: u8,
     log_dir: PathBuf,
+    modifiers: Vec<String>
 }
 
 pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bool) -> Vec<Product> {
@@ -34,12 +35,24 @@ pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bo
         let boards_on_panel = parts[1].parse::<u8>().unwrap_or(1);
         let log_dir = PathBuf::from(parts[2]);
 
+        let mut patterns = Vec::new();
+        let mut modifiers = Vec::new();
+
+        for token in parts.iter().skip(3) {
+            if token.starts_with('#') {
+                modifiers.push(token.to_string());
+            } else {
+                patterns.push(token.to_string())
+            }
+        }
+
         if log_dir.try_exists().is_ok_and(|x| x) || load_all {
             list.push(Product {
                 name: parts[0].to_owned(),
-                patterns: parts.iter().skip(3).map(|f| f.to_string()).collect(),
+                patterns,
                 boards_on_panel,
                 log_dir,
+                modifiers
             });
         }
     }
@@ -60,6 +73,13 @@ pub fn get_product_for_serial<P: AsRef<Path> + std::fmt::Debug>(path: P, serial:
 }
 
 impl Product {
+    pub fn unknown() -> Self {
+        Self { 
+            name: "Unknown product".to_string(), 
+            boards_on_panel: 1,
+            ..Default::default()}
+    }
+
     pub fn check_serial(&self, serial: &str) -> bool {
         for pattern in &self.patterns {
             if serial[13..].starts_with(pattern) {
@@ -80,6 +100,19 @@ impl Product {
 
     pub fn get_log_dir(&self) -> &PathBuf {
         &self.log_dir
+    }
+
+    pub fn get_pos_from_logname(&self, log_file_name: &str) -> u8 {
+        let filename = log_file_name.split(&['/', '\\']).last().unwrap();
+        let pos = filename.split_once('-').unwrap();
+
+        let p = pos.0.parse::<u8>().unwrap_or(1) - 1;
+
+        if self.modifiers.iter().any(|f| f == "#inv") {
+            self.boards_on_panel - p
+        } else {
+            p
+        }
     }
 }
 
@@ -247,12 +280,6 @@ pub fn load_gs_list_for_product<P: AsRef<Path> + std::fmt::Debug>(path: P, produ
     }
 
     ret
-}
-
-pub fn get_pos_from_logname(log_file_name: &str) -> u8 {
-    let filename = log_file_name.split(&['/', '\\']).last().unwrap();
-    let pos = filename.split_once('-').unwrap();
-    pos.0.parse::<u8>().unwrap() - 1
 }
 
 pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
