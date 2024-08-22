@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(non_snake_case)]
+#![allow(clippy::too_many_arguments)]
 
 use std::{
     path::PathBuf, sync::{Arc, Mutex}
@@ -147,6 +148,7 @@ impl Panel {
         result: String,
         date_time: NaiveDateTime,
         log_file_name: String,
+        note: String
     ) {
         if self.serials.is_empty() {
             self.serials = generate_serials(serial, position, self.boards);
@@ -164,15 +166,19 @@ impl Panel {
         let mut logs = vec![String::new(); self.boards as usize];
         logs[position as usize] = log_file_name;
 
+        let mut notes = vec![String::new(); self.boards as usize];
+        notes[position as usize] = note;
+
         self.results.push(PanelResult {
             time: date_time,
             station,
             results,
             logs,
+            notes
         })
     }
 
-    fn add_result(&mut self, i: u8, result: String, log: String) {
+    fn add_result(&mut self, i: u8, result: String, log: String, note: String) {
         let res = if result == "Passed" {
             BoardResult::Passed
         } else {
@@ -183,6 +189,7 @@ impl Panel {
             if x.results[i as usize] == BoardResult::Unknown {
                 x.results[i as usize] = res;
                 x.logs[i as usize] = log;
+                x.notes[i as usize] = note;
                 break;
             }
         }
@@ -194,6 +201,7 @@ struct PanelResult {
     station: String,
     results: Vec<BoardResult>,
     logs: Vec<String>,
+    notes: Vec<String>
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -313,7 +321,7 @@ impl eframe::App for IctResultApp {
 
                         let mut query =
                             Query::new(
-                            "SELECT [Serial_NMBR],[Station],[Result],[Date_Time],[Log_File_Name] 
+                            "SELECT [Serial_NMBR],[Station],[Result],[Date_Time],[Log_File_Name],[Notes]
                             FROM [dbo].[SMT_Test] WHERE [Serial_NMBR] = @P1 
                             ORDER BY [Date_Time] DESC");
                         query.bind(&DMC);
@@ -333,11 +341,12 @@ impl eframe::App for IctResultApp {
                                         let result = x.get::<&str, usize>(2).unwrap().to_owned();
                                         let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
                                         let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
+                                        let note = x.get::<&str, usize>(5).unwrap().to_owned();
                                         
                                          
                                         position = product.get_pos_from_logname(&log_file_name).min(product.get_bop());
 
-                                        panel_lock.lock().unwrap().push(position, serial, station, result, date_time, log_file_name);
+                                        panel_lock.lock().unwrap().push(position, serial, station, result, date_time, log_file_name, note);
 
                                         failed_query = false;
                                     }
@@ -355,7 +364,7 @@ impl eframe::App for IctResultApp {
                                 let DMC = panel_lock.lock().unwrap().serials[i as usize].clone();
 
                                 let mut query =
-                                Query::new("SELECT [Result],[Log_File_Name] FROM [dbo].[SMT_Test] WHERE [Serial_NMBR] = @P1 ORDER BY [Date_Time] DESC");
+                                Query::new("SELECT [Result],[Log_File_Name],[Notes] FROM [dbo].[SMT_Test] WHERE [Serial_NMBR] = @P1 ORDER BY [Date_Time] DESC");
                                 query.bind(&DMC);
         
                                 println!("Query #{i}: {:?}", query);
@@ -365,11 +374,12 @@ impl eframe::App for IctResultApp {
                                         let row = row.unwrap();
                                         match row {
                                             tiberius::QueryItem::Row(x) => {
-                                                // [Result], [Log_File_Name]
+                                                // [Result], [Log_File_Name], [Notes]
                                                 let result = x.get::<&str, usize>(0).unwrap().to_owned();
                                                 let log = x.get::<&str, usize>(1).unwrap().to_owned();
+                                                let note = x.get::<&str, usize>(2).unwrap().to_owned();
                                                 print!("{}, ", result);
-                                                panel_lock.lock().unwrap().add_result(i, result, log);
+                                                panel_lock.lock().unwrap().add_result(i, result, log, note);
                                             }
                                             tiberius::QueryItem::Metadata(_) => (),
                                         }
@@ -425,14 +435,19 @@ impl eframe::App for IctResultApp {
 
                                     ui.horizontal(|ui| {
                                         for (i, board) in result.results.iter().enumerate() {
-                                            if draw_result_box(
+                                            let response = draw_result_box(
                                                 ui,
                                                 board,
                                                 i == panel_lock.selected_pos as usize,
-                                            )
-                                            .clicked()
+                                            );
+
+                                            if response.clicked()
                                             {
                                                 self.open_log(&result.logs[i]);
+                                            }
+
+                                            if !result.notes[i].is_empty() {
+                                                response.on_hover_text(&result.notes[i]);
                                             }
                                         }
                                     });
