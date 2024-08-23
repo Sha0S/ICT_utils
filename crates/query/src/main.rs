@@ -355,6 +355,8 @@ impl eframe::App for IctResultApp {
                             }
                         }
 
+                        context.request_repaint();
+
                         if product.get_bop() > 1 && !failed_query {
                             for i in 0..product.get_bop() {
                                 if i == position {
@@ -387,6 +389,7 @@ impl eframe::App for IctResultApp {
                                 }
 
                                 println!();
+                                context.request_repaint();
                             }
                         }
 
