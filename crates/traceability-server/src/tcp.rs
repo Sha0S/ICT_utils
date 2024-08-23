@@ -190,6 +190,10 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
                 format!("ER: {x}")
             }
         },
+        "TEST" => {
+            info!("TEST token recieved! Tokens: {:?}", tokens);
+            format!("TEST token recieved! Tokens: {:?}", tokens)
+        }
         _ => {
             server
                 .tx
