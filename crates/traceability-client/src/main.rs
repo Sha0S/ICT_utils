@@ -56,11 +56,22 @@ fn main() -> std::io::Result<()> {
         println!("ER: Configuartion is missing the adress of the MES server!")
     }
 
-    let mut stream = TcpStream::connect(config.get_MES_server())?;
+    
+    let address: &str;
+    let tokens: Vec<&str>;
+    if args[1].to_lowercase() == "-ip" {
+        address = &args[2];
+        tokens = args.iter().skip(3).map(|f| f.trim() ).collect();
+    } else {
+        address = config.get_MES_server();
+        tokens = args.iter().skip(1).map(|f| f.trim() ).collect();
+    }
 
-    let tokens: Vec<&str> = args.iter().skip(1).map(|f| f.trim() ).collect(); 
+    println!("{}: {:?}", address, tokens);
+
     let message = tokens.join("|");
 
+    let mut stream = TcpStream::connect(address)?;
     stream.write_all(message.as_bytes())?;
 
     let mut buf = [0;1024];
