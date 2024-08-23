@@ -128,6 +128,7 @@ dependencies = [
  "pwhash",
  "rfd",
  "roxmltree 0.20.0",
+ "rust-ini",
  "rust_xlsxwriter",
  "tiberius",
  "tokio",

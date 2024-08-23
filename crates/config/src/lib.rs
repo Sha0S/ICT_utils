@@ -128,6 +128,7 @@ pub struct Config {
     log_reader: String,
     MES_server: String,
     station_name: String,
+    other_stations: Vec<String>,
 
     AOI_dir: String,
     AOI_line: String,
@@ -180,6 +181,10 @@ impl Config {
                 if let Some(station) = app.get("STATION") {
                     c.station_name = station.to_owned();
                 }
+
+                for station in app.get_all("OTHER_STATIONS") {
+                    c.other_stations.push(station.to_string());
+                }
             }
 
             if let Some(app) = config.section(Some("AOI")) {
@@ -231,6 +236,10 @@ impl Config {
 
     pub fn get_station_name(&self) -> &str {
         &self.station_name
+    }
+
+    pub fn get_other_stations(&self) -> &Vec<String> {
+        &self.other_stations
     }
 
     pub fn get_AOI_dir(&self) -> &str {
