@@ -8,7 +8,7 @@ use std::{
     sync::{mpsc::SyncSender, Arc, Mutex},
 };
 use tiberius::{Client, Query};
-use tokio::{io::Interest, net::TcpStream};
+use tokio::{io::{Interest,AsyncWriteExt}, net::TcpStream};
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 use ICT_config::*;
@@ -137,6 +137,18 @@ pub async fn handle_client(server: &mut TcpServer, stream: TcpStream) {
     }
 }
 
+async fn ping_other_servers(server: &mut TcpServer, tokens: Vec<&str>) -> anyhow::Result<String> {
+
+    for station in server.config.get_other_stations() {
+        info!("PING to station: {station}");
+        let mut stream = TcpStream::connect(station).await?;
+        stream.write_all(format!("TEST|{}", tokens[1]).as_bytes()).await?;
+        stream.shutdown().await?;
+    }
+
+    Ok("PING succesfull".to_string())
+}
+
 async fn process_message(server: &mut TcpServer, input: String) -> String {
     let tokens: Vec<&str> = input.split('|').map(|f| f.trim_end_matches('\0')).collect();
     debug!("Tokens: {:?}", tokens);
@@ -190,6 +202,20 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
                 format!("ER: {x}")
             }
         },
+        "PING" => {
+            info!("PING token recieved! Tokens: {:?}", tokens);
+
+            match ping_other_servers(server, tokens).await {
+                Ok(x) => {
+                    x
+                }
+
+                Err(x) => {
+                    error!("Failed to PING: {x}");
+                    format!("ER: {x}")
+                }
+            }
+        }
         "TEST" => {
             info!("TEST token recieved! Tokens: {:?}", tokens);
             format!("TEST token recieved! Tokens: {:?}", tokens)
