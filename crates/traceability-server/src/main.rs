@@ -401,7 +401,7 @@ impl StringInputWindow {
             // instantiate the window manager
             gui::WindowMainOpts {
                 title: "Input new GS serial".to_owned(),
-                size: (300, 150),
+                size: (300, 100),
                 ..Default::default() // leave all other options as default
             },
         );
@@ -420,7 +420,7 @@ impl StringInputWindow {
             &wnd, // the window manager is the parent of our button
             gui::ButtonOpts {
                 text: "OK".to_owned(),
-                position: (20, 80),
+                position: (40, 60),
                 ..Default::default()
             },
         );
@@ -429,7 +429,7 @@ impl StringInputWindow {
             &wnd, // the window manager is the parent of our button
             gui::ButtonOpts {
                 text: "Cancel".to_owned(),
-                position: (150, 80),
+                position: (150, 60),
                 ..Default::default()
             },
         );
