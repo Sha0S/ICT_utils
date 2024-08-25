@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
 
         loop {
             if let Ok((stream, _)) = listener.accept().await {
-                handle_client(&mut tcp_server, stream).await;
+                tcp_server.handle_client(stream).await;
             }
         }
     });
@@ -439,7 +439,7 @@ impl StringInputWindow {
             edit,
             btn_ok,
             btn_cancel,
-            ret_text: Arc::new(Mutex::new(String::new()))
+            ret_text: Arc::new(Mutex::new(String::new())),
         };
         new_self.events(); // attach our events
         new_self
@@ -449,7 +449,7 @@ impl StringInputWindow {
         self.wnd.run_main(None)?; // simply let the window manager do the hard work
 
         let ret: String = self.ret_text.lock().unwrap().clone();
-        if !ret.is_empty(){
+        if !ret.is_empty() {
             Ok(ret)
         } else {
             AnyResult::Err("Input Canceled".into())
