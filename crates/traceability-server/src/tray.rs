@@ -23,6 +23,8 @@ pub enum Message {
 
     SetMode(AppMode),
     SetIcon(IconCollor),
+    UpdateGSList,
+    AddGS,
     UpdateTimer,
 }
 
@@ -87,6 +89,21 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
 
     tray.inner_mut().add_separator().unwrap();
 
+    let tx_clone = tx.clone();
+    ret.push( // 6
+        tray.inner_mut()
+            .add_menu_item_with_id("", move || {
+                tx_clone.send(Message::AddGS).unwrap();
+            })
+            .unwrap(),
+    );
+
+    let settings_tx = tx.clone();
+    tray.add_menu_item("Update GS list", move || {
+        settings_tx.send(Message::UpdateGSList).unwrap();
+    })
+    .unwrap();
+
     let settings_tx = tx.clone();
     tray.add_menu_item("Users", move || {
         settings_tx.send(Message::Settings).unwrap();
@@ -113,6 +130,7 @@ pub fn update_tray_login(tray: &mut TrayItem, tray_ids: &[u32], level: UserLevel
     }
 
     tray.inner_mut().set_menu_item_label("Logout", tray_ids[5]).unwrap();
+    tray.inner_mut().set_menu_item_label("Add GS", tray_ids[6]).unwrap();
 }
 
 pub fn update_tray_logout(tray: &mut TrayItem, tray_ids: &[u32]) {
@@ -121,4 +139,5 @@ pub fn update_tray_logout(tray: &mut TrayItem, tray_ids: &[u32]) {
     tray.inner_mut().set_menu_item_label("", tray_ids[3]).unwrap();
     tray.inner_mut().set_menu_item_label("", tray_ids[4]).unwrap();
     tray.inner_mut().set_menu_item_label("", tray_ids[5]).unwrap();
+    tray.inner_mut().set_menu_item_label("", tray_ids[6]).unwrap();
 }

@@ -3,8 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::{
-    sync::{mpsc, Arc, Mutex},
-    time::Duration,
+    io::Write, net::TcpStream, sync::{mpsc, Arc, Mutex}, time::Duration
 };
 
 use chrono::DateTime;
@@ -48,6 +47,8 @@ async fn main() -> anyhow::Result<()> {
 
     let act_user_name: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let tcp_user = act_user_name.clone();
+    let act_tcp_address: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let tcp_address = act_tcp_address.clone();
 
     // spawn TCP thread
     tokio::spawn(async move {
@@ -55,6 +56,8 @@ async fn main() -> anyhow::Result<()> {
 
         let MES_server = tcp_server.config.get_MES_server().to_owned();
         info!("Connecting to: {}", MES_server);
+
+        *tcp_address.lock().unwrap() = MES_server.clone();
 
         let listener = match TcpListener::bind(MES_server).await {
             Ok(x) => x,
@@ -212,9 +215,24 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+            Ok(Message::UpdateGSList) => {
+                info!("Recieved user request to update GS list");
+                let addr = act_tcp_address.lock().unwrap().clone();
+                if send_tcp_message(addr, "UPDATE_GOLDEN_SAMPLES").is_err() {
+                    let _ = tx.send(Message::SetIcon(IconCollor::Yellow));
+                    error!("Failed to send TCP message!");
+                }
+            }
             _ => {}
         }
     }
+
+    Ok(())
+}
+
+fn send_tcp_message(addr: String, message: &str) -> anyhow::Result<()> {
+    let mut stream = TcpStream::connect(addr)?;
+    stream.write_all(message.as_bytes())?;
 
     Ok(())
 }
