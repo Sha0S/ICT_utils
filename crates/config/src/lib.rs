@@ -1,9 +1,10 @@
 #![allow(non_snake_case)]
 
 use std::{
-    fs,
-    path::{Path, PathBuf},
+    fs, io::Write, path::{Path, PathBuf}
 };
+
+use anyhow::bail;
 
 pub const CONFIG: &str = "config.ini";
 pub const PRODUCT_LIST: &str = "products";
@@ -276,6 +277,21 @@ fn filter_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Vec<String> {
 
 pub fn load_gs_list<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Vec<String> {
     filter_file(path)
+}
+
+pub fn export_gs_list(gs: &Vec<String>) -> anyhow::Result<()> {
+    let mut file = match fs::File::create(GOLDEN_LIST) {
+        Err(e) => {
+            bail!("{e}");
+        }
+        Ok(file) => file
+    };
+
+    for line in gs {
+        writeln!(file, "{}", line)?;
+    }
+
+    Ok(())
 }
 
 pub fn load_gs_list_for_product<P: AsRef<Path> + std::fmt::Debug>(path: P, product: &Product) -> Vec<String> {

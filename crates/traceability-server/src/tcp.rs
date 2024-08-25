@@ -20,7 +20,6 @@ use ICT_config::*;
 use crate::{AppMode, IconCollor, Message};
 
 static CONFIG: &str = "config.ini";
-static GOLDEN: &str = "golden_samples";
 
 static LIMIT: i32 = 3;
 static LIMIT_2: i32 = 6;
@@ -66,7 +65,7 @@ impl TcpServer {
             last_dmc: String::new(),
             user,
             logs: Vec::new(),
-            golden_samples: load_gs_list(PathBuf::from(GOLDEN)),
+            golden_samples: Vec::new(),
         }
     }
 
@@ -77,24 +76,24 @@ impl TcpServer {
                     let sql_server = self.config.get_server().to_owned();
                     let sql_user = self.config.get_username().to_owned();
                     let sql_pass = self.config.get_password().to_owned();
-            
+
                     let mut tib_config = tiberius::Config::new();
                     tib_config.host(sql_server);
                     tib_config.authentication(tiberius::AuthMethod::sql_server(sql_user, sql_pass));
                     tib_config.trust_cert(); // Most likely not needed.
-            
+
                     let mut client_tmp = connect(tib_config.clone()).await;
                     let mut tries = 0;
                     while client_tmp.is_err() && tries < 3 {
                         client_tmp = connect(tib_config.clone()).await;
                         tries += 1;
                     }
-            
+
                     if client_tmp.is_err() {
                         bail!("Connection to DB failed!")
                     }
 
-                    self.client= Some(client_tmp.unwrap());
+                    self.client = Some(client_tmp.unwrap());
                 }
                 Some(client) => {
                     let qtext = format!("USE [{}]", self.config.get_database());
@@ -102,21 +101,20 @@ impl TcpServer {
                     match client.execute(qtext, &[]).await {
                         Ok(_) => {
                             break;
-                        },
+                        }
                         Err(_) => {
                             warn!("Connection to DB lost, reconnecting!");
                             self.client = None;
-                        },
+                        }
                     }
-                } 
+                }
             }
         }
-        
+
         Ok("Connection is OK!".to_string())
     }
 
     pub async fn update_golden_samples(&mut self) -> anyhow::Result<String> {
-
         // Connect to the DB:
         self.connect().await?;
         let client = self.client.as_mut().unwrap();
@@ -141,7 +139,7 @@ impl TcpServer {
             bail!("Found no golden samples!");
         }
 
-        println!("GS: {:?}", self.golden_samples);
+        ICT_config::export_gs_list(&self.golden_samples)?;
 
         Ok("OK: Golden samples updated succesfully".to_string())
     }
