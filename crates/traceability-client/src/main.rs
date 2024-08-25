@@ -67,8 +67,6 @@ fn main() -> std::io::Result<()> {
         tokens = args.iter().skip(1).map(|f| f.trim() ).collect();
     }
 
-    println!("{}: {:?}", address, tokens);
-
     let message = tokens.join("|");
 
     let mut stream = TcpStream::connect(address)?;
