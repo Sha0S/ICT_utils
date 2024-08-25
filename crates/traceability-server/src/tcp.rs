@@ -8,7 +8,11 @@ use std::{
     sync::{mpsc::SyncSender, Arc, Mutex},
 };
 use tiberius::{Client, Query};
-use tokio::{io::{Interest,AsyncWriteExt}, net::TcpStream};
+use tokio::{
+    io::{AsyncWriteExt, Interest},
+    net::TcpStream,
+};
+use tokio_stream::StreamExt;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 use ICT_config::*;
@@ -25,6 +29,7 @@ pub struct TcpServer {
     pub config: Config,
     mode: Arc<Mutex<AppMode>>,
     tx: SyncSender<Message>,
+    client: Option<Client<tokio_util::compat::Compat<TcpStream>>>,
 
     last_mode: AppMode,
     last_dmc: String,
@@ -56,12 +61,89 @@ impl TcpServer {
             config,
             mode,
             tx,
+            client: None,
             last_mode: AppMode::None,
             last_dmc: String::new(),
             user,
             logs: Vec::new(),
             golden_samples: load_gs_list(PathBuf::from(GOLDEN)),
         }
+    }
+
+    async fn connect(&mut self) -> anyhow::Result<String> {
+        loop {
+            match self.client.as_mut() {
+                None => {
+                    let sql_server = self.config.get_server().to_owned();
+                    let sql_user = self.config.get_username().to_owned();
+                    let sql_pass = self.config.get_password().to_owned();
+            
+                    let mut tib_config = tiberius::Config::new();
+                    tib_config.host(sql_server);
+                    tib_config.authentication(tiberius::AuthMethod::sql_server(sql_user, sql_pass));
+                    tib_config.trust_cert(); // Most likely not needed.
+            
+                    let mut client_tmp = connect(tib_config.clone()).await;
+                    let mut tries = 0;
+                    while client_tmp.is_err() && tries < 3 {
+                        client_tmp = connect(tib_config.clone()).await;
+                        tries += 1;
+                    }
+            
+                    if client_tmp.is_err() {
+                        bail!("Connection to DB failed!")
+                    }
+
+                    self.client= Some(client_tmp.unwrap());
+                }
+                Some(client) => {
+                    let qtext = format!("USE [{}]", self.config.get_database());
+                    debug!("USE DB: {}", qtext);
+                    match client.execute(qtext, &[]).await {
+                        Ok(_) => {
+                            break;
+                        },
+                        Err(_) => {
+                            warn!("Connection to DB lost, reconnecting!");
+                            self.client = None;
+                        },
+                    }
+                } 
+            }
+        }
+        
+        Ok("Connection is OK!".to_string())
+    }
+
+    pub async fn update_golden_samples(&mut self) -> anyhow::Result<String> {
+
+        // Connect to the DB:
+        self.connect().await?;
+        let client = self.client.as_mut().unwrap();
+
+        // Query golden samples
+        if let Ok(mut result) = client
+            .query("SELECT [Serial_NMBR] FROM [dbo].[SMT_ICT_GS]", &[])
+            .await
+        {
+            self.golden_samples.clear();
+            while let Some(row) = result.next().await {
+                let row = row.unwrap();
+                match row {
+                    tiberius::QueryItem::Row(x) => {
+                        self.golden_samples
+                            .push(x.get::<&str, usize>(0).unwrap().to_owned());
+                    }
+                    tiberius::QueryItem::Metadata(_) => (),
+                }
+            }
+        } else {
+            bail!("Found no golden samples!");
+        }
+
+        println!("GS: {:?}", self.golden_samples);
+
+        Ok("OK: Golden samples updated succesfully".to_string())
     }
 
     fn push_mode(&mut self, dmc: String) {
@@ -138,11 +220,12 @@ pub async fn handle_client(server: &mut TcpServer, stream: TcpStream) {
 }
 
 async fn ping_other_servers(server: &mut TcpServer, tokens: Vec<&str>) -> anyhow::Result<String> {
-
     for station in server.config.get_other_stations() {
         info!("PING to station: {station}");
         let mut stream = TcpStream::connect(station).await?;
-        stream.write_all(format!("TEST|{}", tokens[1]).as_bytes()).await?;
+        stream
+            .write_all(format!("TEST|{}", tokens[1]).as_bytes())
+            .await?;
         stream.shutdown().await?;
     }
 
@@ -202,13 +285,23 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
                 format!("ER: {x}")
             }
         },
+        "UPDATE_GOLDEN_SAMPLES" => {
+            info!("Recieved request to update golden samples.");
+
+            match server.update_golden_samples().await {
+                Ok(x) => x,
+
+                Err(x) => {
+                    error!("Failed to PING: {x}");
+                    format!("ER: {x}")
+                }
+            }
+        }
         "PING" => {
             info!("PING token recieved! Tokens: {:?}", tokens);
 
             match ping_other_servers(server, tokens).await {
-                Ok(x) => {
-                    x
-                }
+                Ok(x) => x,
 
                 Err(x) => {
                     error!("Failed to PING: {x}");

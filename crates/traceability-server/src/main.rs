@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
     // spawn TCP thread
     tokio::spawn(async move {
         let mut tcp_server = TcpServer::new(tcp_mode, tcp_tx.clone(), tcp_user);
+
         let MES_server = tcp_server.config.get_MES_server().to_owned();
         info!("Connecting to: {}", MES_server);
 
@@ -64,7 +65,12 @@ async fn main() -> anyhow::Result<()> {
             }
         };
 
-        tcp_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+        if tcp_server.update_golden_samples().await.is_err() {
+            error!("Failed to load the list of golden samples!");
+            tcp_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
+        } else {
+            tcp_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+        }
 
         loop {
             if let Ok((stream, _)) = listener.accept().await {

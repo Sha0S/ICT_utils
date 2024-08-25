@@ -5395,6 +5395,7 @@ dependencies = [
  "pwhash",
  "tiberius",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tray-item",
  "winsafe",
