@@ -25,6 +25,7 @@ pub enum Message {
     SetIcon(IconCollor),
     UpdateGSList,
     AddGS,
+    NewGS(winsafe::AnyResult<String>),
     UpdateTimer,
 }
 

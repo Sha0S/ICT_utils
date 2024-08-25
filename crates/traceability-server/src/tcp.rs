@@ -144,6 +144,39 @@ impl TcpServer {
         Ok("OK: Golden samples updated succesfully".to_string())
     }
 
+    async fn add_golden_sample(&mut self, serial: &str, user: &str) -> anyhow::Result<String> {
+        // Connect to the DB:
+        self.connect().await?;
+        let client = self.client.as_mut().unwrap();
+
+        let product = match ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, serial) {
+            Some(prod) => {
+                prod.get_name().to_string()
+            },
+            None => String::new(),
+        };
+
+        let date = chrono::Utc::now();
+
+        let mut query = Query::new(
+            "INSERT INTO [dbo].[SMT_ICT_GS]
+            ([Serial_NMBR], [Product], [Date_Time], [Notes])
+            VALUES (@P1, @P2, @P3, @P4);");
+        query.bind(serial);
+        query.bind(product);
+        query.bind(date);
+        query.bind(user);
+
+        match query.execute(client).await {
+            Ok(_) => {
+                self.golden_samples.push(serial.to_string());
+                ICT_config::export_gs_list(&self.golden_samples)?;
+                Ok("Upload succesfull".to_string())},
+            Err(e) => bail!("{e}")
+        }
+
+    }
+
     fn push_mode(&mut self, dmc: String) {
         self.last_mode = *self.mode.lock().unwrap();
         self.last_dmc = dmc;
@@ -293,6 +326,26 @@ async fn process_message(server: &mut TcpServer, input: String) -> String {
                     error!("Failed to PING: {x}");
                     format!("ER: {x}")
                 }
+            }
+        }
+        "NEW_GS" => {
+            info!("Recieved request to add golden sample.");
+            if tokens.len() == 3 {
+                let serial = tokens[1];
+                let user = tokens[2];
+                debug!("Serial recieved: {}", serial);
+                
+                match server.add_golden_sample(serial, user).await {
+                    Ok(x) => x,
+
+                    Err(x) => {
+                        error!("Failed to add serial: {x}");
+                        format!("ER: {x}")
+                    }
+                }
+            } else {
+                error!("Missing tokens!");
+                String::from("Missing token!")
             }
         }
         "PING" => {

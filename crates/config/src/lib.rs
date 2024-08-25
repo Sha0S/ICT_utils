@@ -62,6 +62,10 @@ pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bo
 }
 
 pub fn get_product_for_serial<P: AsRef<Path> + std::fmt::Debug>(path: P, serial: &str) -> Option<Product> {
+    if serial.len() < 20 {
+        return None;
+    }
+
     let list = load_product_list(path, true);
 
     for product in list {
@@ -82,6 +86,10 @@ impl Product {
     }
 
     pub fn check_serial(&self, serial: &str) -> bool {
+        if serial.len() < 20 {
+            return false;
+        }
+
         for pattern in &self.patterns {
             if serial[13..].starts_with(pattern) {
                 return true;

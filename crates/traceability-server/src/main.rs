@@ -3,7 +3,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::{
-    io::Write, net::TcpStream, sync::{mpsc, Arc, Mutex}, time::Duration
+    io::Write,
+    net::TcpStream,
+    sync::{mpsc, Arc, Mutex},
+    time::Duration,
 };
 
 use chrono::DateTime;
@@ -84,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
 
     let (mut tray, tray_ids) = init_tray(tx.clone());
     let mut active_user: Option<User> = None;
+    let mut gs_user_name: String = String::new();
     let mut logout_timer: Option<DateTime<chrono::Local>> = None;
     let mut last_color = String::new();
 
@@ -223,6 +227,31 @@ async fn main() -> anyhow::Result<()> {
                     error!("Failed to send TCP message!");
                 }
             }
+            Ok(Message::AddGS) => {
+                info!("Recieved user request to add GS");
+                if active_user.is_some() {
+                    gs_user_name = active_user.as_ref().unwrap().name.clone();
+                    let window_tx = tx.clone();
+                    tokio::spawn(async move {
+                        let res = input_gs();
+                        println!("{:?}", res);
+                        window_tx.send(Message::NewGS(res)).unwrap();
+                    });
+                }
+            }
+            Ok(Message::NewGS(gs_result)) => match gs_result {
+                Ok(gs) => {
+                    info!("New GS serial: {}", gs);
+                    let addr = act_tcp_address.lock().unwrap().clone();
+                    match send_tcp_message(addr, &format!("NEW_GS|{gs}|{gs_user_name}")) {
+                        Ok(_) => info!("Sent TCP request to add new GS"),
+                        Err(e) => error!("Failed to send TCP request to add new GS: {e}"),
+                    }
+                }
+                Err(e) => {
+                    warn!("Adding GS failed: {}", e);
+                }
+            },
             _ => {}
         }
     }
@@ -236,6 +265,10 @@ fn send_tcp_message(addr: String, message: &str) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/*
+MyLoginWindow
+*/
 
 fn login() -> AnyResult<User> {
     MyLoginWindow::new().run()
@@ -333,6 +366,107 @@ impl MyLoginWindow {
                     break;
                 }
             }
+            Ok(())
+        });
+    }
+}
+
+/*
+StringInputWindow
+*/
+
+fn input_gs() -> AnyResult<String> {
+    StringInputWindow::new().run()
+}
+
+#[derive(Clone)]
+pub struct StringInputWindow {
+    wnd: gui::WindowMain, // responsible for managing the window
+    edit: gui::Edit,
+    btn_ok: gui::Button,     // a button
+    btn_cancel: gui::Button, // a button
+
+    ret_text: Arc<Mutex<String>>,
+}
+
+impl Default for StringInputWindow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StringInputWindow {
+    pub fn new() -> Self {
+        let wnd = gui::WindowMain::new(
+            // instantiate the window manager
+            gui::WindowMainOpts {
+                title: "Input new GS serial".to_owned(),
+                size: (300, 150),
+                ..Default::default() // leave all other options as default
+            },
+        );
+
+        let edit = gui::Edit::new(
+            &wnd,
+            gui::EditOpts {
+                text: "serial".to_owned(),
+                position: (20, 20),
+                width: 260,
+                ..Default::default()
+            },
+        );
+
+        let btn_ok = gui::Button::new(
+            &wnd, // the window manager is the parent of our button
+            gui::ButtonOpts {
+                text: "OK".to_owned(),
+                position: (20, 80),
+                ..Default::default()
+            },
+        );
+
+        let btn_cancel = gui::Button::new(
+            &wnd, // the window manager is the parent of our button
+            gui::ButtonOpts {
+                text: "Cancel".to_owned(),
+                position: (150, 80),
+                ..Default::default()
+            },
+        );
+
+        let mut new_self = Self {
+            wnd,
+            edit,
+            btn_ok,
+            btn_cancel,
+            ret_text: Arc::new(Mutex::new(String::new()))
+        };
+        new_self.events(); // attach our events
+        new_self
+    }
+
+    pub fn run(&self) -> AnyResult<String> {
+        self.wnd.run_main(None)?; // simply let the window manager do the hard work
+
+        let ret: String = self.ret_text.lock().unwrap().clone();
+        if !ret.is_empty(){
+            Ok(ret)
+        } else {
+            AnyResult::Err("Input Canceled".into())
+        }
+    }
+
+    fn events(&mut self) {
+        let self2 = self.clone();
+        self2.btn_ok.on().bn_clicked(move || {
+            *self2.ret_text.lock().unwrap() = self2.edit.text();
+            self2.wnd.hwnd().DestroyWindow()?;
+            Ok(())
+        });
+
+        let self2 = self.clone();
+        self2.btn_cancel.on().bn_clicked(move || {
+            self2.wnd.hwnd().DestroyWindow()?;
             Ok(())
         });
     }
