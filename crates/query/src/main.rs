@@ -3,7 +3,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::{
-    path::PathBuf, sync::{Arc, Mutex}
+    env, path::PathBuf, sync::{Arc, Mutex}
 };
 
 use chrono::NaiveDateTime;
@@ -43,6 +43,7 @@ fn load_icon() -> egui::IconData {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
+    let args: Vec<String> = env::args().collect();
 
     let config = match Config::read(PathBuf::from(".\\Config.ini")) {
         Ok(c) => c,
@@ -89,11 +90,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let log_reader = config.get_log_reader().to_string();
+    let starting_serial = if args.len()>=2 { args[1].clone() } else {String::new()};
 
     _ = eframe::run_native(
         format!("ICT Query (v{VERSION})").as_str(),
         options,
-        Box::new(|_| Box::new(IctResultApp::default(client, log_reader))),
+        Box::new(|_| Box::new(IctResultApp::default(client, log_reader, starting_serial))),
     );
 
     Ok(())
@@ -227,19 +229,26 @@ struct IctResultApp {
 
     products: Vec<Product>,
     panel: Arc<Mutex<Panel>>,
+    error_message: Arc<Mutex<Option<String>>>,
 
     DMC_input: String,
+    scan_instantly: bool,
+
     scan: ScanForLogs
 }
 
 impl IctResultApp {
-    fn default(client: Client<Compat<TcpStream>>, log_viewer: String) -> Self {
+    fn default(client: Client<Compat<TcpStream>>, log_viewer: String, DMC_input: String) -> Self {
+        let scan_instantly = !DMC_input.is_empty();
+
         IctResultApp {
             client: Arc::new(tokio::sync::Mutex::new(client)),
             log_viewer,
             products: load_product_list(PRODUCT_LIST, true),
             panel: Arc::new(Mutex::new(Panel::empty())),
-            DMC_input: String::new(),
+            error_message: Arc::new(Mutex::new(None)),
+            DMC_input,
+            scan_instantly,
             scan: ScanForLogs::default()
         }
     }
@@ -278,9 +287,10 @@ impl eframe::App for IctResultApp {
                     self.scan.enable();
                 }
 
-                if ( ok_button.clicked() || (text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))) && self.DMC_input.len() > 15 {
+                if ( self.scan_instantly || ok_button.clicked() || (text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))) && self.DMC_input.len() > 15 {
                     println!("Query DMC: {}", self.DMC_input);
                     let DMC = self.DMC_input.clone();
+                    self.scan_instantly = false;
 
                     let new_range = 
                     egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(DMC.len()));
@@ -293,7 +303,6 @@ impl eframe::App for IctResultApp {
 
                     let product = 'prod: {
                         for p in &self.products {
-                            println!("{:?}", p);
                             if p.check_serial(&DMC) {
                                 println!("Product is: {}", p.get_name());
                                 break 'prod p.clone()                          
@@ -314,6 +323,7 @@ impl eframe::App for IctResultApp {
 
                     let panel_lock = self.panel.clone();
                     let client_lock = self.client.clone();
+                    let error_clone = self.error_message.clone();
                     let context = ctx.clone();                    
 
                     tokio::spawn(async move {
@@ -353,6 +363,10 @@ impl eframe::App for IctResultApp {
                                     tiberius::QueryItem::Metadata(_) => (),
                                 }
                             }
+                        }
+
+                        if failed_query {
+                            *error_clone.lock().unwrap() = Some(format!("Nincs találat a DMC-re: {DMC}"));
                         }
 
                         context.request_repaint();
@@ -398,6 +412,7 @@ impl eframe::App for IctResultApp {
                 }
             });
         });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             let panel_lock = self.panel.lock().unwrap();
 
@@ -464,6 +479,10 @@ impl eframe::App for IctResultApp {
                             });
                         }
                     });
+            } else if let Some(message) = self.error_message.lock().unwrap().as_ref() {
+                ui.centered_and_justified(|ui| {
+                    ui.label(message);
+                });
             }
         });
 
