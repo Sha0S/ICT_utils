@@ -81,7 +81,7 @@ impl LogInfoWindow {
                     ui.horizontal(|ui| {
                         ui.monospace("DMC:");
 
-                        let mut text_edit = egui::TextEdit::singleline(&mut self.search_bar).desired_width(300.0).show(ui);
+                        let mut text_edit = egui::TextEdit::singleline(&mut self.search_bar).desired_width(250.0).show(ui);
 
                         if text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {     
                             let new_range = 
@@ -98,6 +98,10 @@ impl LogInfoWindow {
                                 self.DMC = self.search_bar.clone();
                                 self.report = report;
                             }
+                        }
+
+                        if ui.button("Query").clicked() {
+                            let _ = ICT_config::query(self.DMC.clone());
                         }
                     });
 

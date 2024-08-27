@@ -345,3 +345,9 @@ pub fn generate_serials(serial: String, position: u8, max_pos: u8) -> Vec<String
 
     ret
 }
+
+// Interop
+
+pub fn query(serial: String) -> std::result::Result<std::process::Child, std::io::Error> {
+    std::process::Command::new("query.exe").arg(serial).spawn()
+}

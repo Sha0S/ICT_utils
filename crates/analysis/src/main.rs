@@ -901,17 +901,20 @@ impl eframe::App for MyApp {
                                     for fail in &x.failed {
                                         body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                if ui
-                                                    .add(
-                                                        egui::Label::new(fail.0.to_string())
-                                                            .sense(Sense::click()),
-                                                    )
-                                                    .clicked()
-                                                {
+                                                let response = ui.add(
+                                                    egui::Label::new(fail.0.to_string())
+                                                        .sense(Sense::click()),
+                                                );
+
+                                                if response.clicked() {
                                                     self.info_vp.open(
                                                         fail.0.to_string(),
                                                         self.log_master.clone(),
                                                     );
+                                                } else if response
+                                                    .clicked_by(egui::PointerButton::Secondary)
+                                                {
+                                                    let _ = ICT_config::query(fail.0.to_string());
                                                 }
                                             });
                                             row.col(|ui| {
@@ -1194,8 +1197,7 @@ impl eframe::App for MyApp {
                                     20.0_f32.max((width_for_last_col / 14.0).floor());
                                 let needed_rows = (hour.2.len() as f32 / results_per_row).ceil();
 
-                                let used_yield = 
-                                if self.hourly_gs {
+                                let used_yield = if self.hourly_gs {
                                     if self.hourly_boards {
                                         &hour.1.boards_with_gs
                                     } else {
@@ -1279,20 +1281,24 @@ impl eframe::App for MyApp {
                                         row.col(|ui| {
                                             if i2 == 0 {
                                                 //ui.label(mb.0.clone());
-                                                if ui
-                                                    .add(
-                                                        egui::Label::new(
-                                                            egui::RichText::new(mb.0.clone())
-                                                                .color(color_mb),
-                                                        )
-                                                        .sense(Sense::click()),
+
+                                                let response = ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(mb.0.clone())
+                                                            .color(color_mb),
                                                     )
-                                                    .clicked()
-                                                {
+                                                    .sense(Sense::click()),
+                                                );
+
+                                                if response.clicked() {
                                                     self.info_vp.open_first_NOK(
                                                         mb.0.clone(),
                                                         self.log_master.clone(),
                                                     );
+                                                } else if response
+                                                    .clicked_by(egui::PointerButton::Secondary)
+                                                {
+                                                    let _ = ICT_config::query(mb.0.clone());
                                                 }
                                             }
                                         });
@@ -1315,6 +1321,8 @@ impl eframe::App for MyApp {
                                                         );
                                                     }
                                                 }
+
+                                                ui.add_space(10.0);
                                             });
                                         });
                                     });
