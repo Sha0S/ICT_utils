@@ -118,7 +118,7 @@ impl Product {
         let p = pos.0.parse::<u8>().unwrap_or(1) - 1;
 
         if self.modifiers.iter().any(|f| f == "#inv") {
-            self.boards_on_panel - p
+            self.boards_on_panel - p - 1
         } else {
             p
         }
