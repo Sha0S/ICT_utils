@@ -1,5 +1,7 @@
 use std::{fs, path::{Path, PathBuf}};
 
+use egui::Vec2;
+
 
 pub fn search_for_log(src: &str) -> Option<PathBuf> {
     println!("Searching for {src}");
@@ -84,7 +86,7 @@ pub struct ScanForLogs {
     total: u8,
     found: u8,
 
-    selected: u8,
+    selected: usize,
     only_save_selected: bool,
 
     enabled: bool
@@ -105,7 +107,7 @@ impl ScanForLogs {
         self.found = 0;
     }
 
-    pub fn set_selected(&mut self, selected: u8) {
+    pub fn set_selected(&mut self, selected: usize) {
         self.selected = selected
     }
 
@@ -128,7 +130,7 @@ impl ScanForLogs {
         if let Some(output_dir) = rfd::FileDialog::new().pick_folder() {
             for log in &self.logs {
                 for (i, lo) in log.logs.iter().enumerate() {
-                    if !self.only_save_selected || i == self.selected as usize {
+                    if !self.only_save_selected || i == self.selected {
                         lo.save(&output_dir);
                     }
                 }
@@ -158,10 +160,12 @@ impl ScanForLogs {
                 });
 
                 egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.spacing_mut().interact_size = Vec2::new(0.0, 0.0);
+                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
                     for log in &self.logs {
                         ui.horizontal(|ui| {
                             for (i, lo) in log.logs.iter().enumerate() {
-                                draw_result_box(ui, lo.found(), self.selected == i as u8);
+                                draw_result_box(ui, lo.found(), self.selected == i);
                             }
                         });
                     } 
