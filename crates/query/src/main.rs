@@ -3,7 +3,9 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::{
-    env, path::PathBuf, sync::{Arc, Mutex}
+    env,
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
 use chrono::{NaiveDateTime, TimeDelta};
@@ -89,7 +91,11 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let log_reader = config.get_log_reader().to_string();
-    let starting_serial = if args.len()>=2 { args[1].clone() } else {String::new()};
+    let starting_serial = if args.len() >= 2 {
+        args[1].clone()
+    } else {
+        String::new()
+    };
 
     _ = eframe::run_native(
         format!("ICT Query (v{VERSION})").as_str(),
@@ -111,15 +117,16 @@ async fn connect(tib_config: tiberius::Config) -> anyhow::Result<Client<Compat<T
 struct Panel {
     selected: String,
     selected_pos: usize,
-    boards: Vec<Board>
+    boards: Vec<Board>,
 }
 
 impl Panel {
     fn new() -> Panel {
-        Panel { 
+        Panel {
             selected: String::new(),
             selected_pos: 0,
-            boards: Vec::new() }
+            boards: Vec::new(),
+        }
     }
 
     fn set_selected(&mut self, sel: &str) {
@@ -142,7 +149,7 @@ impl Panel {
         let mut ret = vec![Vec::new(); self.boards[0].results.len()];
 
         for board in self.boards.iter() {
-            for (i, result)  in board.results.iter().enumerate() {
+            for (i, result) in board.results.iter().enumerate() {
                 ret[i].push(result.Log_File_Name.as_str());
             }
         }
@@ -158,19 +165,42 @@ impl Panel {
         }
     }
 
-    fn push(&mut self, Serial_NMBR: String, Station: String,  Result: bool, Date_Time: NaiveDateTime, Log_File_Name: String, Notes: String ) {
-        if let Some(board) = self.boards.iter_mut().find(|f| f.Serial_NMBR == Serial_NMBR) {
+    fn push(
+        &mut self,
+        Serial_NMBR: String,
+        Station: String,
+        Result: bool,
+        Date_Time: NaiveDateTime,
+        Log_File_Name: String,
+        Notes: String,
+    ) {
+        if let Some(board) = self
+            .boards
+            .iter_mut()
+            .find(|f| f.Serial_NMBR == Serial_NMBR)
+        {
             board.push(Station, Result, Date_Time, Log_File_Name, Notes)
         } else {
-            self.boards.push(Board::new(Serial_NMBR, Station, Result, Date_Time, Log_File_Name, Notes));
+            self.boards.push(Board::new(
+                Serial_NMBR,
+                Station,
+                Result,
+                Date_Time,
+                Log_File_Name,
+                Notes,
+            ));
         }
     }
 
     fn sort(&mut self) {
+        self.boards
+            .sort_by(|a, b| a.Serial_NMBR.cmp(&b.Serial_NMBR));
 
-        self.boards.sort_by(|a, b| a.Serial_NMBR.cmp(&b.Serial_NMBR));
-
-        self.selected_pos = self.boards.iter().position(|f| f.Serial_NMBR == self.selected).unwrap_or_default();
+        self.selected_pos = self
+            .boards
+            .iter()
+            .position(|f| f.Serial_NMBR == self.selected)
+            .unwrap_or_default();
 
         for board in &mut self.boards {
             board.sort();
@@ -182,12 +212,19 @@ impl Panel {
 
         for board in &self.boards {
             for result in &board.results {
-                // For backwards compatibility, we don't except the Date_Times to match. 
+                // For backwards compatibility, we don't except the Date_Times to match.
                 // 10s seems to be a sensible threshold, but might have to change it.
-                if let Some(r) = ret.iter_mut().find(|f| (f.Date_Time - result.Date_Time).abs() < TimeDelta::seconds(10)) {
+                if let Some(r) = ret
+                    .iter_mut()
+                    .find(|f| (f.Date_Time - result.Date_Time).abs() < TimeDelta::seconds(10))
+                {
                     r.results.push(result);
                 } else {
-                    ret.push(Test { Date_Time: result.Date_Time, Station: result.Station.clone(), results: vec![result] });
+                    ret.push(Test {
+                        Date_Time: result.Date_Time,
+                        Station: result.Station.clone(),
+                        results: vec![result],
+                    });
                 }
             }
         }
@@ -204,17 +241,46 @@ struct Test<'a> {
 
 struct Board {
     Serial_NMBR: String,
-    results: Vec<TestResult>
+    results: Vec<TestResult>,
 }
 
 impl Board {
-    fn new(Serial_NMBR: String, Station: String,  Result: bool, Date_Time: NaiveDateTime, Log_File_Name: String, Notes: String ) -> Board {
-        let results = vec![TestResult{ Station, Result, Date_Time, Log_File_Name, Notes }];
-        Board { Serial_NMBR, results }
+    fn new(
+        Serial_NMBR: String,
+        Station: String,
+        Result: bool,
+        Date_Time: NaiveDateTime,
+        Log_File_Name: String,
+        Notes: String,
+    ) -> Board {
+        let results = vec![TestResult {
+            Station,
+            Result,
+            Date_Time,
+            Log_File_Name,
+            Notes,
+        }];
+        Board {
+            Serial_NMBR,
+            results,
+        }
     }
 
-    fn push(&mut self, Station: String,  Result: bool, Date_Time: NaiveDateTime, Log_File_Name: String, Notes: String ) {
-        self.results.push(TestResult { Station, Result, Date_Time, Log_File_Name, Notes });
+    fn push(
+        &mut self,
+        Station: String,
+        Result: bool,
+        Date_Time: NaiveDateTime,
+        Log_File_Name: String,
+        Notes: String,
+    ) {
+        self.results.push(TestResult {
+            Station,
+            Result,
+            Date_Time,
+            Log_File_Name,
+            Notes,
+        });
     }
 
     fn sort(&mut self) {
@@ -227,9 +293,8 @@ struct TestResult {
     Result: bool,
     Date_Time: NaiveDateTime,
     Log_File_Name: String,
-    Notes: String
+    Notes: String,
 }
-
 
 struct IctResultApp {
     client: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
@@ -241,7 +306,7 @@ struct IctResultApp {
     DMC_input: String,
     scan_instantly: bool,
 
-    scan: ScanForLogs
+    scan: ScanForLogs,
 }
 
 impl IctResultApp {
@@ -255,7 +320,7 @@ impl IctResultApp {
             error_message: Arc::new(Mutex::new(None)),
             DMC_input,
             scan_instantly,
-            scan: ScanForLogs::default()
+            scan: ScanForLogs::default(),
         }
     }
 
@@ -275,7 +340,7 @@ impl IctResultApp {
         println!("Query DMC: {}", self.DMC_input);
 
         let DMC = self.DMC_input.clone();
-        
+
         self.panel.lock().unwrap().clear();
 
         let panel_lock = self.panel.clone();
@@ -287,11 +352,11 @@ impl IctResultApp {
 
             // 1 - Get Log_File_Name only.
 
-            let mut query =
-            Query::new(
-            "SELECT TOP(1) Log_File_Name
+            let mut query = Query::new(
+                "SELECT TOP(1) Log_File_Name
                 FROM SMT_Test 
-                WHERE Serial_NMBR = @P1");
+                WHERE Serial_NMBR = @P1",
+            );
             query.bind(&DMC);
 
             let logname: String;
@@ -300,7 +365,8 @@ impl IctResultApp {
                     logname = row.get::<&str, usize>(0).unwrap().to_string();
                 } else {
                     // No result found for the DMC
-                    *error_clone.lock().unwrap() = Some(format!("Nem található eredmény a DMC-re: {}", DMC));
+                    *error_clone.lock().unwrap() =
+                        Some(format!("Nem található eredmény a DMC-re: {}", DMC));
                     return;
                 }
             } else {
@@ -315,8 +381,9 @@ impl IctResultApp {
             //  2 - We use it to determine the board number on the panel.
             //  And with the board number and the DMC we can generate all the serials on the panel.
 
-            let serials: Vec<String> =
-            if let Some(product) = ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, &DMC) {
+            let serials: Vec<String> = if let Some(product) =
+                ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, &DMC)
+            {
                 println!("Product is: {}", product.get_name());
                 if let Some(pos) = product.get_pos_from_logname(&logname) {
                     println!("Position is: {pos} (using base 0)");
@@ -334,8 +401,13 @@ impl IctResultApp {
             let qtext = format!(
                 "SELECT Serial_NMBR, Station, Result, Date_Time, Log_File_Name, Notes
                 FROM SMT_Test 
-                WHERE Serial_NMBR IN ( {} );", serials.iter().map(|f| format!("'{f}'")).collect::<Vec<String>>().join(", ") );
-   
+                WHERE Serial_NMBR IN ( {} );",
+                serials
+                    .iter()
+                    .map(|f| format!("'{f}'"))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            );
 
             println!("Query: {qtext}");
             if let Ok(mut result) = c.query(qtext, &[]).await {
@@ -350,9 +422,15 @@ impl IctResultApp {
                             let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
                             let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
                             let note = x.get::<&str, usize>(5).unwrap_or_default().to_owned(); // Notes can be NULL!
-                            
 
-                            panel_lock.lock().unwrap().push(serial, station, result == "Passed", date_time, log_file_name, note);
+                            panel_lock.lock().unwrap().push(
+                                serial,
+                                station,
+                                result == "Passed",
+                                date_time,
+                                log_file_name,
+                                note,
+                            );
                         }
                         tiberius::QueryItem::Metadata(_) => (),
                     }
@@ -375,7 +453,9 @@ impl eframe::App for IctResultApp {
             ui.horizontal(|ui| {
                 ui.monospace("DMC:");
 
-                let mut text_edit = egui::TextEdit::singleline(&mut self.DMC_input).desired_width(300.0).show(ui);
+                let mut text_edit = egui::TextEdit::singleline(&mut self.DMC_input)
+                    .desired_width(300.0)
+                    .show(ui);
 
                 let ok_button = ui.add(egui::Button::new("OK"));
 
@@ -386,21 +466,28 @@ impl eframe::App for IctResultApp {
                         self.scan.push(result);
                     }
 
-                    self.scan.set_selected(self.panel.lock().unwrap().selected_pos);
+                    self.scan
+                        .set_selected(self.panel.lock().unwrap().selected_pos);
                     self.scan.enable();
                 }
 
-                if ( self.scan_instantly || ok_button.clicked() || (text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))) && self.DMC_input.len() > 15 {
+                if (self.scan_instantly
+                    || ok_button.clicked()
+                    || (text_edit.response.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                    && self.DMC_input.len() > 15
+                {
                     self.scan_instantly = false;
 
-                    let new_range = 
-                    egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(self.DMC_input.len()));
+                    let new_range = egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(self.DMC_input.len()),
+                    );
                     text_edit.response.request_focus();
                     text_edit.state.cursor.set_char_range(Some(new_range));
                     text_edit.state.store(ui.ctx(), text_edit.response.id);
 
-                   
-                    let context = ctx.clone();                    
+                    let context = ctx.clone();
 
                     self.query(context);
                 }
@@ -452,8 +539,7 @@ impl eframe::App for IctResultApp {
                                                 panel_lock.selected_pos(i),
                                             );
 
-                                            if response.clicked()
-                                            {
+                                            if response.clicked() {
                                                 self.open_log(&board.Log_File_Name);
                                             }
 
@@ -467,7 +553,10 @@ impl eframe::App for IctResultApp {
                                     ui.label(&result.Station);
                                 });
                                 row.col(|ui| {
-                                    ui.label(format!("{}", result.Date_Time.format("%Y-%m-%d %H:%M")));
+                                    ui.label(format!(
+                                        "{}",
+                                        result.Date_Time.format("%Y-%m-%d %H:%M")
+                                    ));
                                 });
                             });
                         }
@@ -495,7 +584,15 @@ fn draw_result_box(ui: &mut egui::Ui, result: bool, highlight: bool) -> egui::Re
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);
         let rect = rect.expand(visuals.expansion);
-        ui.painter().rect_filled(rect, 2.0, if result {egui::Color32::GREEN} else {egui::Color32::RED} );
+        ui.painter().rect_filled(
+            rect,
+            2.0,
+            if result {
+                egui::Color32::GREEN
+            } else {
+                egui::Color32::RED
+            },
+        );
     }
 
     response
