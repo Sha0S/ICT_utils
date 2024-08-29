@@ -284,7 +284,9 @@ impl IctResultApp {
     fn query(&mut self, context: egui::Context) {
         println!("Query DMC: {}", self.DMC_input);
 
-        let DMC = self.DMC_input.clone();             
+        let DMC = self.DMC_input.clone();
+
+        
         
         self.panel.lock().unwrap().clear();
 
@@ -293,27 +295,50 @@ impl IctResultApp {
         let error_clone = self.error_message.clone();
 
         tokio::spawn(async move {
-            let mut c = client_lock.lock().await;                        
+            let mut c = client_lock.lock().await;
+
+            // 1 - Get Log_File_Name only. We use it to determine the board number on the panel.
 
             let mut query =
-                Query::new(
-                "SELECT T1.Serial_NMBR, T1.Station, T1.Result, T1.Date_Time, T1.Log_File_Name, T1.Notes
-                FROM SMT_Test T1
-                JOIN 
-                (
-                    SELECT Station, Date_Time
-                    FROM SMT_Test
-                    WHERE Serial_NMBR = @P1
-                ) T2
-                ON T1.Date_Time = T2.Date_Time AND T1.Station = T2.Station");
+            Query::new(
+            "SELECT TOP(1) Log_File_Name
+                FROM SMT_Test 
+                WHERE Serial_NMBR = @P1");
             query.bind(&DMC);
 
-            println!("Query: {:?}", query);
+            let logname: String;
+            if let Ok(result) = query.query(&mut c).await {
+                let row = result.into_row().await.unwrap();
+                logname = row.unwrap().get::<&str, usize>(0).unwrap().to_string();
+            } else {
+                // No result found for the DMC
+                *error_clone.lock().unwrap() = Some(format!("Nincs találat a DMC-re: {DMC}"));
+                return;
+            }
 
+            println!("Logname: {logname}");
             panel_lock.lock().unwrap().set_selected(&DMC);
 
-            let mut failed_query = true;
-            if let Ok(mut result) = query.query(&mut c).await {
+            let serials: Vec<String> =
+            if let Some(product) = ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, &DMC) {
+                if let Some(pos) = product.get_pos_from_logname(&logname) {
+                    ICT_config::generate_serials(&DMC, pos, product.get_bop())
+                } else {
+                    vec![DMC]
+                }
+            } else {
+                vec![DMC]
+            };
+
+            println!("Serials: {:?}", serials);
+            let qtext = format!(
+                "SELECT Serial_NMBR, Station, Result, Date_Time, Log_File_Name, Notes
+                FROM SMT_Test 
+                WHERE Serial_NMBR IN ( {} );", serials.iter().map(|f| format!("'{f}'")).collect::<Vec<String>>().join(", ") );
+   
+
+            println!("Query: {qtext}");
+            if let Ok(mut result) = c.query(qtext, &[]).await {
                 while let Some(row) = result.next().await {
                     let row = row.unwrap();
                     match row {
@@ -324,20 +349,14 @@ impl IctResultApp {
                             let result = x.get::<&str, usize>(2).unwrap().to_owned();
                             let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
                             let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
-                            let note = x.get::<&str, usize>(5).unwrap().to_owned();
+                            let note = x.get::<&str, usize>(5).unwrap_or_default().to_owned();
                             
 
                             panel_lock.lock().unwrap().push(serial, station, result == "Passed", date_time, log_file_name, note);
-
-                            failed_query = false;
                         }
                         tiberius::QueryItem::Metadata(_) => (),
                     }
                 }
-            }
-
-            if failed_query {
-                *error_clone.lock().unwrap() = Some(format!("Nincs találat a DMC-re: {DMC}"));
             }
 
             panel_lock.lock().unwrap().sort();

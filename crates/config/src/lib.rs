@@ -111,16 +111,18 @@ impl Product {
         &self.log_dir
     }
 
-    pub fn get_pos_from_logname(&self, log_file_name: &str) -> u8 {
-        let filename = log_file_name.split(&['/', '\\']).last().unwrap();
-        let pos = filename.split_once('-').unwrap();
+    pub fn get_pos_from_logname(&self, log_file_name: &str) -> Option<u8> {
+        let filename = log_file_name.split(&['/', '\\']).last()?;
+        let pos = filename.split_once('-')?;
 
-        let p = pos.0.parse::<u8>().unwrap_or(1) - 1;
-
-        if self.modifiers.iter().any(|f| f == "#inv") {
-            self.boards_on_panel - p - 1
+        if let Ok(p) = pos.0.parse::<u8>() {
+            if self.modifiers.iter().any(|f| f == "#inv") {
+                Some(self.boards_on_panel - p)
+            } else {
+                Some(p-1)
+            }
         } else {
-            p
+            None
         }
     }
 }
@@ -333,12 +335,12 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
     ret
 }
 
-pub fn generate_serials(serial: String, position: u8, max_pos: u8) -> Vec<String> {
+pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> {
     let mut ret = Vec::with_capacity(max_pos as usize);
 
     let sn = serial[6..13].parse::<u32>().expect("ER: Parsing error") - position as u32;
     for i in sn..sn + max_pos as u32 {
-        let mut s = serial.clone();
+        let mut s = serial.to_string();
         s.replace_range(6..13, &format!("{:07}", i));
         ret.push(s);
     }
