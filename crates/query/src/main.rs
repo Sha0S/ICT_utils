@@ -6,7 +6,7 @@ use std::{
     env, path::PathBuf, sync::{Arc, Mutex}
 };
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeDelta};
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder};
 use tiberius::{Client, Query};
@@ -138,18 +138,6 @@ impl Panel {
         self.boards.is_empty()
     }
 
-    /*fn get_logs(&self) -> Vec<Vec<&str>> {
-        let mut ret = vec![Vec::new(); self.boards.len()];
-
-        for (i,board) in self.boards.iter().enumerate() {
-            for result  in &board.results {
-                ret[i].push(result.Log_File_Name.as_str());
-            }
-        }
-
-        ret
-    }*/
-
     fn get_logs(&self) -> Vec<Vec<&str>> {
         let mut ret = vec![Vec::new(); self.boards[0].results.len()];
 
@@ -194,7 +182,9 @@ impl Panel {
 
         for board in &self.boards {
             for result in &board.results {
-                if let Some(r) = ret.iter_mut().find(|f| f.Date_Time == result.Date_Time) {
+                // For backwards compatibility, we don't except the Date_Times to match. 
+                // 10s seems to be a sensible threshold, but might have to change it.
+                if let Some(r) = ret.iter_mut().find(|f| (f.Date_Time - result.Date_Time).abs() < TimeDelta::seconds(10)) {
                     r.results.push(result);
                 } else {
                     ret.push(Test { Date_Time: result.Date_Time, Station: result.Station.clone(), results: vec![result] });
@@ -285,8 +275,6 @@ impl IctResultApp {
         println!("Query DMC: {}", self.DMC_input);
 
         let DMC = self.DMC_input.clone();
-
-        
         
         self.panel.lock().unwrap().clear();
 
@@ -297,7 +285,7 @@ impl IctResultApp {
         tokio::spawn(async move {
             let mut c = client_lock.lock().await;
 
-            // 1 - Get Log_File_Name only. We use it to determine the board number on the panel.
+            // 1 - Get Log_File_Name only.
 
             let mut query =
             Query::new(
@@ -308,20 +296,30 @@ impl IctResultApp {
 
             let logname: String;
             if let Ok(result) = query.query(&mut c).await {
-                let row = result.into_row().await.unwrap();
-                logname = row.unwrap().get::<&str, usize>(0).unwrap().to_string();
+                if let Some(row) = result.into_row().await.unwrap() {
+                    logname = row.get::<&str, usize>(0).unwrap().to_string();
+                } else {
+                    // No result found for the DMC
+                    *error_clone.lock().unwrap() = Some(format!("Nem található eredmény a DMC-re: {}", DMC));
+                    return;
+                }
             } else {
-                // No result found for the DMC
-                *error_clone.lock().unwrap() = Some(format!("Nincs találat a DMC-re: {DMC}"));
+                // SQL error
+                *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
                 return;
             }
 
             println!("Logname: {logname}");
             panel_lock.lock().unwrap().set_selected(&DMC);
 
+            //  2 - We use it to determine the board number on the panel.
+            //  And with the board number and the DMC we can generate all the serials on the panel.
+
             let serials: Vec<String> =
             if let Some(product) = ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, &DMC) {
+                println!("Product is: {}", product.get_name());
                 if let Some(pos) = product.get_pos_from_logname(&logname) {
+                    println!("Position is: {pos} (using base 0)");
                     ICT_config::generate_serials(&DMC, pos, product.get_bop())
                 } else {
                     vec![DMC]
@@ -329,6 +327,8 @@ impl IctResultApp {
             } else {
                 vec![DMC]
             };
+
+            // 3 - Query the serials.
 
             println!("Serials: {:?}", serials);
             let qtext = format!(
@@ -349,7 +349,7 @@ impl IctResultApp {
                             let result = x.get::<&str, usize>(2).unwrap().to_owned();
                             let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
                             let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
-                            let note = x.get::<&str, usize>(5).unwrap_or_default().to_owned();
+                            let note = x.get::<&str, usize>(5).unwrap_or_default().to_owned(); // Notes can be NULL!
                             
 
                             panel_lock.lock().unwrap().push(serial, station, result == "Passed", date_time, log_file_name, note);
@@ -357,6 +357,10 @@ impl IctResultApp {
                         tiberius::QueryItem::Metadata(_) => (),
                     }
                 }
+            } else {
+                // SQL error
+                *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
+                return;
             }
 
             panel_lock.lock().unwrap().sort();
