@@ -94,19 +94,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ICT_traceability"
-version = "0.0.0"
-dependencies = [
- "ICT_config",
- "anyhow",
- "once_cell",
- "tiberius",
- "tokio",
- "tokio-util",
- "winauth 0.0.5",
-]
-
-[[package]]
 name = "ICT_utils"
 version = "2.8.2"
 dependencies = [
@@ -940,15 +927,6 @@ dependencies = [
  "miniz_oxide",
  "object",
  "rustc-demangle",
-]
-
-[[package]]
-name = "base64"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
-dependencies = [
- "byteorder",
 ]
 
 [[package]]
@@ -5179,7 +5157,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
- "winauth 0.0.4",
+ "winauth",
 ]
 
 [[package]]
@@ -5501,7 +5479,7 @@ checksum = "df5ca6fc611f683df7189e61d4309770b478124a6adb67dba937b387e23e0486"
 dependencies = [
  "aes",
  "ahash 0.8.11",
- "base64 0.21.7",
+ "base64",
  "byteorder",
  "cbc",
  "cfb",
@@ -5582,7 +5560,7 @@ version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8cdd25c339e200129fe4de81451814e5228c9b771d57378817d6117cc2b3f97"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "flate2",
  "log",
  "once_cell",
@@ -5616,7 +5594,7 @@ version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38b0a51b72ab80ca511d126b77feeeb4fb1e972764653e61feac30adc161a756"
 dependencies = [
- "base64 0.21.7",
+ "base64",
  "log",
  "pico-args",
  "usvg-parser",
@@ -6136,20 +6114,6 @@ version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f820cd208ce9c6b050812dc2d724ba98c6c1e9db5ce9b3f58d925ae5723a5e6"
 dependencies = [
- "bitflags 1.3.2",
- "byteorder",
- "md5",
- "rand 0.7.3",
- "winapi",
-]
-
-[[package]]
-name = "winauth"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e03c9d0fde636447315ff38695b14c85c6ccc738ade05a400a3ce568a557021"
-dependencies = [
- "base64 0.10.1",
  "bitflags 1.3.2",
  "byteorder",
  "md5",

@@ -272,6 +272,7 @@ impl TcpServer {
         let boards = tokens[2].parse::<u8>()?;
         let mode = self.get_mode();
 
+        self.logs.clear();
         debug!("Starting new board: {dmc}");
 
         // A) Is it a golden sample
