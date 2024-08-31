@@ -8,7 +8,6 @@ use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
-use umya_spreadsheet::{self, Worksheet};
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
 mod keysight_log;
@@ -1156,12 +1155,13 @@ impl Board {
 
     fn export_to_col(
         &self,
-        sheet: &mut Worksheet,
-        mut c: u32,
+        sheet: &mut rust_xlsxwriter::Worksheet,
+        mut c: u16,
         only_failure: bool,
         only_final: bool,
         export_list: &[usize],
-    ) -> u32 {
+        num_format: &rust_xlsxwriter::Format
+    ) -> u16 {
         if self.logs.is_empty() {
             return c;
         }
@@ -1175,11 +1175,7 @@ impl Board {
             return c;
         }
 
-        // Board values (DMC+index) only get printed once
-        sheet.get_cell_mut((c, 1)).set_value(self.DMC.clone());
-        sheet
-            .get_cell_mut((c, 2))
-            .set_value_number(self.index as u32);
+        let format_with_wrap = rust_xlsxwriter::Format::new().set_text_wrap();
 
         let log_slice = {
             if only_final {
@@ -1194,22 +1190,22 @@ impl Board {
                 continue;
             }
 
+            // DMC in a merged 2x2 range
+            let _ = sheet.merge_range(0, c, 1, c + 1, &self.DMC, &format_with_wrap);
+
             // Log result and time of test
-            sheet.get_cell_mut((c, 3)).set_value(l.result.print());
-            sheet
-                .get_cell_mut((c + 1, 3))
-                .set_value(u64_to_string(l.time_s));
+            let _ = sheet.write(2, c, l.result.print());
+            let _ = sheet.write_with_format(2, c + 1, u64_to_string(l.time_s), &format_with_wrap);
+
+            let _ = sheet.set_column_width(c, 8);
+            let _ = sheet.set_column_width(c + 1, 14);
 
             // Print measurement results
             for (i, t) in export_list.iter().enumerate() {
                 if let Some(res) = l.results.get(*t) {
                     if res.0 != BResult::Unknown {
-                        sheet
-                            .get_cell_mut((c, 4 + (i as u32)))
-                            .set_value(res.0.print());
-                        sheet
-                            .get_cell_mut((c + 1, 4 + (i as u32)))
-                            .set_value_number(res.1);
+                        let _ = sheet.write(3 + i as u32, c, res.0.print());
+                        let _ = sheet.write_number_with_format(3 + i as u32, c + 1, res.1, num_format);
                     }
                 }
             }
@@ -1221,11 +1217,12 @@ impl Board {
 
     fn export_to_line(
         &self,
-        sheet: &mut Worksheet,
+        sheet: &mut rust_xlsxwriter::Worksheet,
         mut l: u32,
         only_failure: bool,
         only_final: bool,
         export_list: &[usize],
+        num_format: &rust_xlsxwriter::Format,
     ) -> u32 {
         if self.logs.is_empty() {
             return l;
@@ -1240,8 +1237,6 @@ impl Board {
             return l;
         }
 
-        // Board values (DMC+index) only get printed once
-        sheet.get_cell_mut((1, l)).set_value(self.DMC.clone());
 
         let log_slice = {
             if only_final {
@@ -1256,19 +1251,20 @@ impl Board {
                 continue;
             }
 
+            // DMC
+            let _ = sheet.write(l, 0, &self.DMC);
+
             // Log result and time of test
-            sheet.get_cell_mut((3, l)).set_value(log.result.print());
-            sheet
-                .get_cell_mut((2, l))
-                .set_value(u64_to_string(log.time_s));
+            let _ = sheet.write(l, 2, log.result.print());
+            let _ = sheet.write(l, 1, u64_to_string(log.time_s));
 
             // Print measurement results
             for (i, t) in export_list.iter().enumerate() {
                 if let Some(res) = log.results.get(*t) {
                     if res.0 != BResult::Unknown {
-                        let c = i as u32 * 2 + 4;
-                        sheet.get_cell_mut((c, l)).set_value(res.0.print());
-                        sheet.get_cell_mut((c + 1, l)).set_value_number(res.1);
+                        let c = i as u16 * 2 + 3;
+                        let _ = sheet.write(l, c, res.0.print());
+                        let _ = sheet.write_number_with_format(l, c + 1, res.1, num_format);
                     }
                 }
             }
@@ -1322,7 +1318,7 @@ impl MultiBoard {
 
     fn set_gs(&mut self) {
         self.golden_sample = true;
-    } 
+    }
 
     // Generating stats for self, and reporting single-board stats.
     fn update(&mut self) -> (Yield, Yield, Yield) {
@@ -1505,10 +1501,10 @@ pub struct HourlyYield {
     pub panels: Yield,
     pub panels_with_gs: Yield,
     pub boards: Yield,
-    pub boards_with_gs: Yield
+    pub boards_with_gs: Yield,
 }
 
-pub type HourlyStats = (u64, HourlyYield, Vec<(BResult, u64, String, bool)>); // (time, [(OK, NOK), (OK, NOK with gs)], Vec<Results>) 
+pub type HourlyStats = (u64, HourlyYield, Vec<(BResult, u64, String, bool)>); // (time, [(OK, NOK), (OK, NOK with gs)], Vec<Results>)
 pub type MbStats = (String, Vec<MbResult>, bool); // (DMC, Vec<(time, Multiboard result, Vec<Board results>)>, golden_sample)
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -1590,7 +1586,6 @@ impl LogFileHandler {
             }
 
             self.multiboards[0].push(log)
-
         } else {
             // Check if it is for the same type.
             // Mismatched types are not supported. (And ATM I see no reason to do that.)
@@ -1870,7 +1865,8 @@ impl LogFileHandler {
                                 r.1.boards.0 += self.pp_multiboard as u16;
                             }
                         } else {
-                            let failed_boards = res.panels.iter().filter(|f| **f == BResult::Fail).count() as u16;
+                            let failed_boards =
+                                res.panels.iter().filter(|f| **f == BResult::Fail).count() as u16;
 
                             r.1.panels_with_gs.1 += 1;
                             r.1.boards_with_gs.1 += failed_boards;
@@ -1897,7 +1893,8 @@ impl LogFileHandler {
                         hourly.boards.0 += self.pp_multiboard as u16;
                     }
                 } else {
-                    let failed_boards = res.panels.iter().filter(|f| **f == BResult::Fail).count() as u16;
+                    let failed_boards =
+                        res.panels.iter().filter(|f| **f == BResult::Fail).count() as u16;
 
                     hourly.panels_with_gs.1 += 1;
                     hourly.boards_with_gs.1 += failed_boards;
@@ -2073,50 +2070,51 @@ impl LogFileHandler {
     }
 
     pub fn export(&self, path: PathBuf, settings: &ExportSettings) {
-        let mut book = umya_spreadsheet::new_file();
-        let sheet = book.get_sheet_mut(&0).unwrap();
+        let mut book = rust_xlsxwriter::Workbook::new();
+        let sheet = book.add_worksheet();
+        let sci_format = rust_xlsxwriter::Format::new().set_num_format("0.00E+00");
 
         if settings.vertical {
             // Create header
-            sheet.get_cell_mut("A1").set_value(self.product_id.clone());
-            sheet.get_cell_mut("A3").set_value("DMC");
-            sheet.get_cell_mut("B3").set_value("Test time");
-            sheet.get_cell_mut("C3").set_value("Log result");
-            sheet.get_cell_mut("C1").set_value("Test name:");
-            sheet.get_cell_mut("C2").set_value("Test limits:");
+            let _ = sheet.write(0, 0, &self.product_id);
+            let _ = sheet.write(2, 0, "DMC");
+            let _ = sheet.set_column_width(0, 32);
+            let _ = sheet.write(2, 1, "Test time");
+            let _ = sheet.set_column_width(1, 18);
+            let _ = sheet.write(2, 2, "Log result");
+            let _ = sheet.write(0, 2, "Test name:");
+            let _ = sheet.write(1, 2, "Test limits:");
+            let _ = sheet.set_column_width(2, 10);
 
             // Generate list of teststeps to be exported
             let export_list = self.get_export_list(settings);
 
             // Print testlist
             for (i, t) in export_list.iter().enumerate() {
-                let c: u32 = (i * 2 + 4).try_into().unwrap();
-                sheet
-                    .get_cell_mut((c, 1))
-                    .set_value(self.testlist[*t].0.clone());
-                sheet
-                    .get_cell_mut((c + 1, 1))
-                    .set_value(self.testlist[*t].1.print());
-
-                sheet.get_cell_mut((c, 3)).set_value("Result");
-                sheet.get_cell_mut((c + 1, 3)).set_value("Value");
+                let c: u16 = (i * 2 + 3).try_into().unwrap();
+                let _ = sheet.write_with_format(0, c, &self.testlist[*t].0, &rust_xlsxwriter::Format::new().set_text_wrap());
+                let _ = sheet.set_column_width(c, 16);
+                let _ = sheet.write(0, c + 1, self.testlist[*t].1.print());
+                let _ = sheet.set_column_width(c+1, 10);
+                let _ = sheet.write(2, c, "Result");
+                let _ = sheet.write(2, c + 1, "Value");
             }
 
             // Print limits. Nominal value is skiped.
             // It does not check if the limit changed.
             if let Some(limits) = self.generate_limit_list() {
                 for (i, t) in export_list.iter().enumerate() {
-                    let c: u32 = (i * 2 + 4).try_into().unwrap();
+                    let c: u16 = (i * 2 + 3).try_into().unwrap();
                     // Lim2 (f32,f32),     // UL - LL
                     // Lim3 (f32,f32,f32)  // Nom - UL - LL
                     match limits[*t] {
                         TLimit::Lim3(_, ul, ll) => {
-                            sheet.get_cell_mut((c, 2)).set_value_number(ll);
-                            sheet.get_cell_mut((c + 1, 2)).set_value_number(ul);
+                            let _ = sheet.write_number_with_format(1, c, ll, &sci_format);
+                            let _ = sheet.write_number_with_format(1, c + 1, ul, &sci_format);
                         }
                         TLimit::Lim2(ul, ll) => {
-                            sheet.get_cell_mut((c, 2)).set_value_number(ll);
-                            sheet.get_cell_mut((c + 1, 2)).set_value_number(ul);
+                            let _ = sheet.write_number_with_format(1, c, ll, &sci_format);
+                            let _ = sheet.write_number_with_format(1, c + 1, ul, &sci_format);
                         }
                         TLimit::None => {}
                     }
@@ -2124,7 +2122,7 @@ impl LogFileHandler {
             }
 
             // Print test results
-            let mut l: u32 = 4;
+            let mut l: u32 = 3;
             for mb in &self.multiboards {
                 for b in &mb.boards {
                     l = b.export_to_line(
@@ -2133,49 +2131,54 @@ impl LogFileHandler {
                         settings.only_failed_panels,
                         settings.only_final_logs,
                         &export_list,
+                        &sci_format
                     );
                 }
             }
         } else {
             // Create header
-            sheet.get_cell_mut("A1").set_value(self.product_id.clone());
-            sheet.get_cell_mut("A3").set_value("Test name");
-            sheet.get_cell_mut("B3").set_value("Test type");
-            sheet.get_cell_mut("D2").set_value("Test limits");
-            sheet.get_cell_mut("C3").set_value("MIN");
-            sheet.get_cell_mut("D3").set_value("Nom");
-            sheet.get_cell_mut("E3").set_value("MAX");
+            let _ = sheet.write(0, 0, &self.product_id);
+            let _ = sheet.write(2, 0, "Test name");
+            let _ = sheet.set_column_width(0, 22);
+
+            let _ = sheet.write(2, 1, "Test type");
+            let _ = sheet.set_column_width(4, 16);
+
+            let _ = sheet.write(1, 3, "Test limits");
+
+            let _ = sheet.write(2, 2, "MIN");
+            let _ = sheet.set_column_width(2, 10);
+            let _ = sheet.write(2, 3, "Nom");
+            let _ = sheet.set_column_width(3, 10);
+            let _ = sheet.write(2, 4, "MAX");
+            let _ = sheet.set_column_width(4, 10);
 
             // Generate list of teststeps to be exported
             let export_list = self.get_export_list(settings);
 
             // Print testlist
             for (i, t) in export_list.iter().enumerate() {
-                let l: u32 = (i + 4).try_into().unwrap();
-                sheet
-                    .get_cell_mut((1, l))
-                    .set_value(self.testlist[*t].0.clone());
-                sheet
-                    .get_cell_mut((2, l))
-                    .set_value(self.testlist[*t].1.print());
+                let l: u32 = (i + 3).try_into().unwrap();
+                let _ = sheet.write(l, 0, &self.testlist[*t].0);
+                let _ = sheet.write(l, 1, &self.testlist[*t].1.print());
             }
 
             // Print limits
             // It does not check if the limit changed.
             if let Some(limits) = self.generate_limit_list() {
                 for (i, t) in export_list.iter().enumerate() {
-                    let l: u32 = (i + 4).try_into().unwrap();
+                    let l: u32 = (i + 3).try_into().unwrap();
                     // Lim2 (f32,f32),     // UL - LL
                     // Lim3 (f32,f32,f32)  // Nom - UL - LL
                     match limits[*t] {
                         TLimit::Lim3(nom, ul, ll) => {
-                            sheet.get_cell_mut((3, l)).set_value_number(ll);
-                            sheet.get_cell_mut((4, l)).set_value_number(nom);
-                            sheet.get_cell_mut((5, l)).set_value_number(ul);
+                            let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
+                            let _ = sheet.write_number_with_format(l, 3, nom, &sci_format);
+                            let _ = sheet.write_number_with_format(l, 4, ul, &sci_format);
                         }
                         TLimit::Lim2(ul, ll) => {
-                            sheet.get_cell_mut((3, l)).set_value_number(ll);
-                            sheet.get_cell_mut((5, l)).set_value_number(ul);
+                            let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
+                            let _ = sheet.write_number_with_format(l, 4, ul, &sci_format);
                         }
                         TLimit::None => {}
                     }
@@ -2183,7 +2186,7 @@ impl LogFileHandler {
             }
 
             // Print test results
-            let mut c: u32 = 6;
+            let mut c: u16 = 5;
             for mb in &self.multiboards {
                 for b in &mb.boards {
                     c = b.export_to_col(
@@ -2192,12 +2195,13 @@ impl LogFileHandler {
                         settings.only_failed_panels,
                         settings.only_final_logs,
                         &export_list,
+                        &sci_format
                     );
                 }
             }
         }
 
-        let _ = umya_spreadsheet::writer::xlsx::write(&book, path);
+        let _ = book.save(path);
     }
 
     fn get_mb_w_DMC(&self, DMC: &str) -> Option<&MultiBoard> {

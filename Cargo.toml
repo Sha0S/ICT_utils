@@ -50,8 +50,7 @@ env_logger = "0"
 log = "0"
 rfd = "0"
 chrono = "0"
-umya-spreadsheet = "1"
-rust_xlsxwriter = { version = "0.68.0", features = ["chrono"] }
+rust_xlsxwriter = { version = "0.74.0", features = ["chrono"] }
 anyhow = "1.0.82"
 once_cell = "1.19.0"
 tiberius = { version = "0", features = ["all"] }
