@@ -207,6 +207,14 @@ impl Panel {
         }
     }
 
+    fn get_selected_board(&self) -> Option<&Board> {
+        if let Some(board) = self.boards.get(self.selected_pos) {
+            Some(board)
+        } else {
+            None
+        }
+    }
+
     fn get_tests(&self) -> Vec<Test> {
         let mut ret: Vec<Test> = Vec::new();
 
@@ -296,8 +304,15 @@ struct TestResult {
     Notes: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AppMode {
+    Board,
+    Panel,
+}
+
 struct IctResultApp {
     client: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
+    mode: AppMode,
     log_viewer: String,
 
     panel: Arc<Mutex<Panel>>,
@@ -315,6 +330,7 @@ impl IctResultApp {
 
         IctResultApp {
             client: Arc::new(tokio::sync::Mutex::new(client)),
+            mode: AppMode::Board,
             log_viewer,
             panel: Arc::new(Mutex::new(Panel::new())),
             error_message: Arc::new(Mutex::new(None)),
@@ -492,75 +508,178 @@ impl eframe::App for IctResultApp {
                     self.query(context);
                 }
             });
+
+            ui.horizontal_centered(|ui| {
+                ui.monospace("Nézet: ");
+                ui.selectable_value(&mut self.mode, AppMode::Board, "Board");
+                ui.selectable_value(&mut self.mode, AppMode::Panel, "Panel");
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let panel_lock = self.panel.lock().unwrap();
 
             if !panel_lock.is_empty() {
-                ui.label(format!("Fő DMC: {}", panel_lock.get_main_serial()));
-                ui.separator();
-
-                TableBuilder::new(ui)
-                    .striped(true)
-                    .column(Column::initial(40.0).resizable(true))
-                    .column(Column::initial(250.0).resizable(true)) // Result
-                    .column(Column::initial(100.0).resizable(true)) // Station
-                    .column(Column::initial(150.0).resizable(true)) // Time
-                    .header(20.0, |mut header| {
-                        header.col(|ui| {
-                            ui.label("#");
-                        });
-                        header.col(|ui| {
-                            ui.label("Eredmények");
-                        });
-                        header.col(|ui| {
-                            ui.label("Állomás");
-                        });
-                        header.col(|ui| {
-                            ui.label("Időpont");
-                        });
-                    })
-                    .body(|mut body| {
-                        for (x, result) in panel_lock.get_tests().iter().enumerate() {
-                            body.row(14.0, |mut row| {
-                                row.col(|ui| {
-                                    ui.label(format!("{}", x + 1));
-                                });
-                                row.col(|ui| {
-                                    ui.spacing_mut().interact_size = Vec2::new(0.0, 0.0);
-                                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
-
-                                    ui.horizontal(|ui| {
-                                        for (i, board) in result.results.iter().enumerate() {
-                                            let response = draw_result_box(
-                                                ui,
-                                                board.Result,
-                                                panel_lock.selected_pos(i),
-                                            );
-
-                                            if response.clicked() {
-                                                self.open_log(&board.Log_File_Name);
-                                            }
-
-                                            if !board.Notes.is_empty() {
-                                                response.on_hover_text(&board.Notes);
-                                            }
-                                        }
+                match self.mode {
+                    AppMode::Board => {
+                        if let Some(board) = panel_lock.get_selected_board() {
+                            TableBuilder::new(ui)
+                                .striped(true)
+                                .column(Column::initial(30.0).resizable(true))
+                                .column(Column::initial(80.0).resizable(true)) // Result
+                                .column(Column::initial(100.0).resizable(true)) // Station
+                                .column(Column::initial(110.0).resizable(true)) // Time
+                                .column(Column::remainder().resizable(true)) // Notes
+                                .header(20.0, |mut header| {
+                                    header.col(|ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.label("#");
+                                        });
                                     });
+                                    header.col(|ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.label("Eredmény");
+                                        });
+                                    });
+                                    header.col(|ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.label("Állomás");
+                                        });
+                                    });
+                                    header.col(|ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.label("Időpont");
+                                        });
+                                    });
+                                    header.col(|ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.label("Megjegyzések");
+                                        });
+                                    });
+                                })
+                                .body(|mut body| {
+                                    for (x, result) in board.results.iter().enumerate() {
+                                        body.row(14.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.centered_and_justified(|ui| {
+                                                    ui.label(format!("{}", x + 1));
+                                                });
+                                            });
+                                            row.col(|ui| {
+                                                let response = draw_result_text(ui, result.Result);
+
+                                                if response.clicked() {
+                                                    self.open_log(&result.Log_File_Name);
+                                                }
+                                            });
+                                            row.col(|ui| {
+                                                ui.centered_and_justified(|ui| {
+                                                    ui.label(&result.Station);
+                                                });
+                                            });
+                                            row.col(|ui| {
+                                                ui.centered_and_justified(|ui| {
+                                                    ui.label(format!(
+                                                        "{}",
+                                                        result.Date_Time.format("%Y-%m-%d %H:%M")
+                                                    ));
+                                                });
+                                            });
+                                            row.col(|ui| {
+                                                ui.add(
+                                                    egui::Label::new(&result.Notes).truncate(true),
+                                                );
+                                            });
+                                        });
+                                    }
                                 });
-                                row.col(|ui| {
-                                    ui.label(&result.Station);
-                                });
-                                row.col(|ui| {
-                                    ui.label(format!(
-                                        "{}",
-                                        result.Date_Time.format("%Y-%m-%d %H:%M")
-                                    ));
-                                });
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.label("Belső hiba");
                             });
                         }
-                    });
+                    }
+                    AppMode::Panel => {
+                        ui.label(format!("Fő DMC: {}", panel_lock.get_main_serial()));
+                        ui.separator();
+
+                        TableBuilder::new(ui)
+                            .striped(true)
+                            .column(Column::initial(30.0).resizable(true))
+                            .column(Column::initial(250.0).resizable(true)) // Result
+                            .column(Column::initial(100.0).resizable(true)) // Station
+                            .column(Column::remainder().resizable(true)) // Time
+                            .header(20.0, |mut header| {
+                                header.col(|ui| {
+                                    ui.centered_and_justified(|ui| {
+                                        ui.label("#");
+                                    });
+                                });
+                                header.col(|ui| {
+                                    ui.centered_and_justified(|ui| {
+                                        ui.label("Eredmények");
+                                    });
+                                });
+                                header.col(|ui| {
+                                    ui.centered_and_justified(|ui| {
+                                        ui.label("Állomás");
+                                    });
+                                });
+                                header.col(|ui| {
+                                    ui.centered_and_justified(|ui| {
+                                        ui.label("Időpont");
+                                    });
+                                });
+                            })
+                            .body(|mut body| {
+                                for (x, result) in panel_lock.get_tests().iter().enumerate() {
+                                    body.row(14.0, |mut row| {
+                                        row.col(|ui| {
+                                            ui.centered_and_justified(|ui| {
+                                                ui.label(format!("{}", x + 1));
+                                            });
+                                        });
+                                        row.col(|ui| {
+                                            ui.spacing_mut().interact_size = Vec2::new(0.0, 0.0);
+                                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
+
+                                            ui.horizontal(|ui| {
+                                                for (i, board) in result.results.iter().enumerate()
+                                                {
+                                                    let response = draw_result_box(
+                                                        ui,
+                                                        board.Result,
+                                                        panel_lock.selected_pos(i),
+                                                    );
+
+                                                    if response.clicked() {
+                                                        self.open_log(&board.Log_File_Name);
+                                                    }
+
+                                                    if !board.Notes.is_empty() {
+                                                        response.on_hover_text(&board.Notes);
+                                                    }
+                                                }
+                                            });
+                                        });
+                                        row.col(|ui| {
+                                            ui.centered_and_justified(|ui| {
+                                                ui.label(&result.Station);
+                                            });
+                                        });
+                                        row.col(|ui| {
+                                            ui.centered_and_justified(|ui| {
+                                                ui.label(format!(
+                                                    "{}",
+                                                    result.Date_Time.format("%Y-%m-%d %H:%M")
+                                                ));
+                                            });
+                                        });
+                                    });
+                                }
+                            });
+                    }
+                }
             } else if let Some(message) = self.error_message.lock().unwrap().as_ref() {
                 ui.centered_and_justified(|ui| {
                     ui.label(message);
@@ -592,6 +711,37 @@ fn draw_result_box(ui: &mut egui::Ui, result: bool, highlight: bool) -> egui::Re
             } else {
                 egui::Color32::RED
             },
+        );
+    }
+
+    response
+}
+
+fn draw_result_text(ui: &mut egui::Ui, result: bool) -> egui::Response {
+    let desired_size = ui.available_size();
+    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        ui.painter().rect_filled(
+            rect,
+            2.0,
+            if result {
+                egui::Color32::DARK_GREEN
+            } else {
+                egui::Color32::DARK_RED
+            },
+        );
+
+        return ui.put(
+            rect,
+            egui::Label::new(
+                egui::RichText::new(match result {
+                    true => "OK",
+                    false => "NOK",
+                })
+                .color(egui::Color32::WHITE),
+            )
+            .sense(egui::Sense::click()),
         );
     }
 
