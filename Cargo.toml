@@ -25,10 +25,6 @@ name = "log_reader"
 path = ".\\crates\\log_reader\\src\\main.rs"
 
 [[bin]]
-name = "traceability"
-path = ".\\crates\\traceability\\src\\main.rs"
-
-[[bin]]
 name = "traceability-client"
 path = ".\\crates\\traceability-client\\src\\main.rs"
 
