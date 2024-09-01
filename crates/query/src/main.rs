@@ -133,6 +133,13 @@ impl Panel {
         self.selected = sel.to_string();
     }
 
+    fn set_selected_pos(&mut self, sel: usize) {
+        if sel < self.boards.len() {
+            self.selected_pos = sel;
+            self.selected = self.boards[sel].Serial_NMBR.clone();
+        }
+    }
+
     fn selected_pos(&self, i: usize) -> bool {
         self.selected_pos == i
     }
@@ -517,7 +524,8 @@ impl eframe::App for IctResultApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let panel_lock = self.panel.lock().unwrap();
+            let mut panel_lock = self.panel.lock().unwrap();
+            let mut switch_selected: Option<usize> = None;
 
             if !panel_lock.is_empty() {
                 match self.mode {
@@ -654,6 +662,8 @@ impl eframe::App for IctResultApp {
 
                                                     if response.clicked() {
                                                         self.open_log(&board.Log_File_Name);
+                                                    } else if response.clicked_by(egui::PointerButton::Secondary) {
+                                                        switch_selected = Some(i);
                                                     }
 
                                                     if !board.Notes.is_empty() {
@@ -684,6 +694,10 @@ impl eframe::App for IctResultApp {
                 ui.centered_and_justified(|ui| {
                     ui.label(message);
                 });
+            }
+
+            if let Some(i) = switch_selected {
+                panel_lock.set_selected_pos(i);
             }
         });
 
