@@ -157,7 +157,9 @@ impl Panel {
 
         for board in self.boards.iter() {
             for (i, result) in board.results.iter().enumerate() {
-                ret[i].push(result.Log_File_Name.as_str());
+                if !result.Log_File_Name.is_empty() {
+                    ret[i].push(result.Log_File_Name.as_str());
+                }
             }
         }
 
@@ -348,6 +350,10 @@ impl IctResultApp {
     }
 
     fn open_log(&self, log: &str) {
+        if log.is_empty() {
+            return;
+        }
+
         println!("Trying to open log: {log}");
         if let Some(path) = search_for_log(log) {
             let res = std::process::Command::new(&self.log_viewer)
@@ -419,17 +425,18 @@ impl IctResultApp {
             };
 
             // 3 - Query the serials.
+            let serial_string = serials
+                .iter()
+                .map(|f| format!("'{f}'"))
+                .collect::<Vec<String>>()
+                .join(", ");
 
             println!("Serials: {:?}", serials);
             let qtext = format!(
                 "SELECT Serial_NMBR, Station, Result, Date_Time, Log_File_Name, Notes
                 FROM SMT_Test 
                 WHERE Serial_NMBR IN ( {} );",
-                serials
-                    .iter()
-                    .map(|f| format!("'{f}'"))
-                    .collect::<Vec<String>>()
-                    .join(", ")
+                serial_string
             );
 
             println!("Query: {qtext}");
@@ -460,7 +467,57 @@ impl IctResultApp {
                 }
             } else {
                 // SQL error
-                *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
+                *error_clone.lock().unwrap() =
+                    Some("SQL hiba lekérdezés közben! (ICT)".to_string());
+                return;
+            }
+
+            // 4 - Query the serials for CCL results
+
+            println!("Serials: {:?}", serials);
+            let qtext = format!(
+                "SELECT Barcode, Result, Side, Line, Operator, RowUpdated
+                FROM AOI_RESULTS 
+                WHERE Barcode IN ( {} );",
+                serial_string
+            );
+
+            println!("Query: {qtext}");
+            if let Ok(mut result) = c.query(qtext, &[]).await {
+                while let Some(row) = result.next().await {
+                    let row = row.unwrap();
+                    match row {
+                        tiberius::QueryItem::Row(x) => {
+                            //  Barcode, Result, Side, Line, Operator, RowUpdated
+                            let serial = x.get::<&str, usize>(0).unwrap().to_owned();
+                            let result = x.get::<&str, usize>(1).unwrap().to_owned();
+                            let side = x.get::<&str, usize>(2).unwrap().to_owned();
+                            let station = x.get::<&str, usize>(3).unwrap().to_owned();
+                            let operator = x.get::<&str, usize>(4).unwrap_or_default().to_owned();
+                            let date_time = x.get::<NaiveDateTime, usize>(5).unwrap();
+
+                            let station_str = if station == "LINE1" {
+                                format!("CCL {}", side)
+                            } else {
+                                format!("CCL-FW {}", side)
+                            };
+
+                            panel_lock.lock().unwrap().push(
+                                serial,
+                                station_str,
+                                result == "PASS",
+                                date_time,
+                                "".to_string(),
+                                format!("Operator: {operator}"),
+                            );
+                        }
+                        tiberius::QueryItem::Metadata(_) => (),
+                    }
+                }
+            } else {
+                // SQL error
+                *error_clone.lock().unwrap() =
+                    Some("SQL hiba lekérdezés közben! (CCL)".to_string());
                 return;
             }
 
@@ -662,7 +719,9 @@ impl eframe::App for IctResultApp {
 
                                                     if response.clicked() {
                                                         self.open_log(&board.Log_File_Name);
-                                                    } else if response.clicked_by(egui::PointerButton::Secondary) {
+                                                    } else if response
+                                                        .clicked_by(egui::PointerButton::Secondary)
+                                                    {
                                                         switch_selected = Some(i);
                                                     }
 
