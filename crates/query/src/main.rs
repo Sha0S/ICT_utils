@@ -322,6 +322,7 @@ enum AppMode {
 struct IctResultApp {
     client: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
     mode: AppMode,
+    loading: Arc<Mutex<bool>>,
     log_viewer: String,
 
     panel: Arc<Mutex<Panel>>,
@@ -340,6 +341,7 @@ impl IctResultApp {
         IctResultApp {
             client: Arc::new(tokio::sync::Mutex::new(client)),
             mode: AppMode::Board,
+            loading: Arc::new(Mutex::new(false)),
             log_viewer,
             panel: Arc::new(Mutex::new(Panel::new())),
             error_message: Arc::new(Mutex::new(None)),
@@ -375,6 +377,7 @@ impl IctResultApp {
         let panel_lock = self.panel.clone();
         let client_lock = self.client.clone();
         let error_clone = self.error_message.clone();
+        let loading_lock = self.loading.clone();
 
         tokio::spawn(async move {
             let mut c = client_lock.lock().await;
@@ -396,11 +399,13 @@ impl IctResultApp {
                     // No result found for the DMC
                     *error_clone.lock().unwrap() =
                         Some(format!("Nem található eredmény a DMC-re: {}", DMC));
+                    *loading_lock.lock().unwrap() = false;
                     return;
                 }
             } else {
                 // SQL error
                 *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
+                *loading_lock.lock().unwrap() = false;
                 return;
             }
 
@@ -469,6 +474,7 @@ impl IctResultApp {
                 // SQL error
                 *error_clone.lock().unwrap() =
                     Some("SQL hiba lekérdezés közben! (ICT)".to_string());
+                *loading_lock.lock().unwrap() = false;
                 return;
             }
 
@@ -518,10 +524,12 @@ impl IctResultApp {
                 // SQL error
                 *error_clone.lock().unwrap() =
                     Some("SQL hiba lekérdezés közben! (CCL)".to_string());
+                *loading_lock.lock().unwrap() = false;
                 return;
             }
 
             panel_lock.lock().unwrap().sort();
+            *loading_lock.lock().unwrap() = false;
             context.request_repaint();
         });
     }
@@ -555,8 +563,9 @@ impl eframe::App for IctResultApp {
                     || ok_button.clicked()
                     || (text_edit.response.lost_focus()
                         && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                    && self.DMC_input.len() > 15
+                    && self.DMC_input.len() > 15 && ! *self.loading.lock().unwrap()
                 {
+                    *self.loading.lock().unwrap() = true;
                     self.scan_instantly = false;
 
                     let new_range = egui::text::CCursorRange::two(
