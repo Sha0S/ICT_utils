@@ -227,7 +227,7 @@ impl Panel {
     fn get_tests(&self) -> Vec<Test> {
         let mut ret: Vec<Test> = Vec::new();
 
-        for board in &self.boards {
+        for (i, board) in self.boards.iter().enumerate() {
             for result in &board.results {
                 // For backwards compatibility, we don't except the Date_Times to match.
                 // 10s seems to be a sensible threshold, but might have to change it.
@@ -235,16 +235,23 @@ impl Panel {
                     .iter_mut()
                     .find(|f| (f.Date_Time - result.Date_Time).abs() < TimeDelta::seconds(10))
                 {
-                    r.results.push(result);
+                    r.results[i] = Some(result);
                 } else {
                     ret.push(Test {
                         Date_Time: result.Date_Time,
                         Station: result.Station.clone(),
-                        results: vec![result],
+                        results: {
+                            let mut res = vec![None; self.boards.len()];
+                            res[i] = Some(result);
+                            res
+                        },
                     });
                 }
             }
         }
+
+        ret.sort_by_key(|f| f.Date_Time);
+        ret.reverse();
 
         ret
     }
@@ -253,7 +260,7 @@ impl Panel {
 struct Test<'a> {
     Date_Time: NaiveDateTime,
     Station: String,
-    results: Vec<&'a TestResult>,
+    results: Vec<Option<&'a TestResult>>,
 }
 
 struct Board {
@@ -302,6 +309,7 @@ impl Board {
 
     fn sort(&mut self) {
         self.results.sort_by_key(|f| f.Date_Time);
+        self.results.reverse();
     }
 }
 
@@ -720,22 +728,26 @@ impl eframe::App for IctResultApp {
                                             ui.horizontal(|ui| {
                                                 for (i, board) in result.results.iter().enumerate()
                                                 {
-                                                    let response = draw_result_box(
-                                                        ui,
-                                                        board.Result,
-                                                        panel_lock.selected_pos(i),
-                                                    );
-
-                                                    if response.clicked() {
-                                                        self.open_log(&board.Log_File_Name);
-                                                    } else if response
-                                                        .clicked_by(egui::PointerButton::Secondary)
-                                                    {
-                                                        switch_selected = Some(i);
-                                                    }
-
-                                                    if !board.Notes.is_empty() {
-                                                        response.on_hover_text(&board.Notes);
+                                                    if let Some(res) = board {
+                                                        let response = draw_result_box(
+                                                            ui,
+                                                            res.Result,
+                                                            panel_lock.selected_pos(i),
+                                                        );
+    
+                                                        if response.clicked() {
+                                                            self.open_log(&res.Log_File_Name);
+                                                        } else if response
+                                                            .clicked_by(egui::PointerButton::Secondary)
+                                                        {
+                                                            switch_selected = Some(i);
+                                                        }
+    
+                                                        if !res.Notes.is_empty() {
+                                                            response.on_hover_text(&res.Notes);
+                                                        }
+                                                    } else {
+                                                        ui.add_space(13.0);
                                                     }
                                                 }
                                             });
