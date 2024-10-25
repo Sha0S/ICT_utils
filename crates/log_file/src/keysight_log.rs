@@ -81,7 +81,8 @@ pub fn status_to_str(s: i32) -> String {
         81 => "aborted_(STOP)".to_string(),
         82 => "aborted_(BREAK)".to_string(),
         83..=89 => "reserved".to_string(),
-        90..=99 => "user-definable".to_string(),
+        90 => "programming_error".to_string(), // 90 is "user-definable" too, but we spec use if for programming failures
+        91..=99 => "user-definable".to_string(),
         _ => "parsing_failed".to_string(),
     }
 }
