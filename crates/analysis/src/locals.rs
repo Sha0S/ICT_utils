@@ -15,10 +15,11 @@ const TOTAL: usize = 9;
 //const FAILURES: usize = 10;
 //const PCS: usize = 11;
 const AUTO_UPDATE: usize = 12;
-const AU_DONE_1: usize = 13;
-const AU_DONE_2: usize = 14;
+const AUTO_UPDATE_NOW: usize = 13;
+const AU_DONE_1: usize = 14;
+const AU_DONE_2: usize = 15;
 
-const MESSAGE:  [[&str;2];15] = [
+const MESSAGE:  [[&str;2];16] = [
     ["Váltás magyar nyelvre!",  "Language changed to English!"],
     ["Logok betöltése",         "Loadings logs"],
     ["Műszak",                  "Shift"],
@@ -31,7 +32,8 @@ const MESSAGE:  [[&str;2];15] = [
     ["Összes teszt:",           "All tests:"],
     ["Kiesők",                  "Failures"],
     ["db",                      "pcs"],
-    ["Automata frissítés:",                 "Automatic update:"],
+    ["Automata frissítés:",     "Automatic update:"],
+    ["Most",                    "Now"],
     ["Automata frissítés befejeződött ",    "Automatic update done in "],
     ["ms alatt, új logok: ",                "ms, new logs: "],
 ];

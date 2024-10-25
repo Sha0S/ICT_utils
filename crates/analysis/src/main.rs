@@ -221,6 +221,7 @@ enum AUState {
 struct AutoUpdate {
     usable: bool,
     enabled: bool,
+    update_requested: bool,
     state: Arc<RwLock<AUState>>,
 
     product: Option<usize>,
@@ -240,6 +241,7 @@ impl AutoUpdate {
         AutoUpdate {
             usable: false,
             enabled: false,
+            update_requested: false,
             state: Arc::new(RwLock::new(AUState::Standby)),
             product: None,
             last_log: None,
@@ -266,6 +268,11 @@ impl AutoUpdate {
     }
 
     fn its_time(&self) -> bool {
+        if self.enabled && self.update_requested {
+            self.update_requested = false;
+            return true;
+        }
+
         if self.enabled && *self.state.read().unwrap() == AUState::Standby {
             if let Some(t) = self.last_scan_time {
                 return (Local::now() - t).num_seconds() > 30;
@@ -273,6 +280,12 @@ impl AutoUpdate {
         }
 
         false
+    }
+
+    fn request_update(&mut self) {
+        if self.enabled { 
+            self.update_requested = true;
+        }
     }
 
     fn gather_logs(&mut self, products: &[Product]) {
@@ -668,6 +681,10 @@ impl eframe::App for MyApp {
 
                 ui.monospace(MESSAGE[AUTO_UPDATE][self.lang]);
                 ui.add(egui::Checkbox::without_text(&mut self.auto_update.enabled));
+
+                if ui.button(MESSAGE[AUTO_UPDATE_NOW][self.lang]).clicked() {
+                    self.auto_update.request_update();
+                }
 
                 if self.auto_update.state() != AUState::Standby {
                     ui.add(egui::Spinner::new());
