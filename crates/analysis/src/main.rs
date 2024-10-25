@@ -991,14 +991,20 @@ impl eframe::App for MyApp {
 
                 if ui.button(MESSAGE_E[EXPORT_LABEL][self.lang]).clicked() {
                     self.mode = AppMode::Export;
+
+                    self.selected_test_results.1.clear(); //  forces update+redraw for plot mode
                 }
 
                 if ui.button(MESSAGE_H[HOURLY_LABEL][self.lang]).clicked() {
                     self.mode = AppMode::Hourly;
+
+                    self.selected_test_results.1.clear(); //  forces update+redraw for plot mode
                 }
 
                 if ui.button(MESSAGE_H[MULTI_LABEL][self.lang]).clicked() {
                     self.mode = AppMode::Multiboards;
+
+                    self.selected_test_results.1.clear(); //  forces update+redraw for plot mode
                 }
 
                 if ui.button(MESSAGE_P[PLOT_LABEL][self.lang]).clicked() {
@@ -1025,7 +1031,6 @@ impl eframe::App for MyApp {
                 let testlist = lfh.get_testlist();
                 let mut reset_plot = false;
                 if !testlist.is_empty() {
-                    // I will need to replace this latter with something edittable
                     ui.horizontal(|ui| {
                         ui.add(DropDownBox::from_iter(
                             testlist.iter().map(|f| &f.0),
