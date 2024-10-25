@@ -73,7 +73,7 @@ pub fn load_user_list() -> Vec<User> {
     if let Ok(fileb) = fs::read_to_string(USER_LIST) {
         let lines: Vec<String> = fileb
             .lines()
-            .filter(|f| !f.starts_with('!'))
+            .filter(|f| !f.starts_with('!') && !f.is_empty())
             .map(|f| f.to_owned())
             .collect();
 
