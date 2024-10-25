@@ -79,11 +79,13 @@ pub fn load_user_list() -> Vec<User> {
 
         for line in lines {
             let tokens: Vec<&str> = line.split('|').collect();
-            ret.push(User {
-                name: tokens[0].to_string(),
-                level: tokens[1].into(),
-                hash: tokens[2].to_string(),
-            })
+            if tokens.len() >= 3 {
+                ret.push(User {
+                    name: tokens[0].to_string(),
+                    level: tokens[1].into(),
+                    hash: tokens[2].to_string(),
+                })
+            }
         }
     }
 
