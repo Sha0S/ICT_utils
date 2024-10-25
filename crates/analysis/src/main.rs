@@ -424,7 +424,7 @@ impl Default for MyApp {
             mode: AppMode::None,
             hourly_stats: Vec::new(),
             hourly_gs: false,
-            hourly_boards: false,
+            hourly_boards: true,
 
             multiboard_results: Vec::new(),
 
