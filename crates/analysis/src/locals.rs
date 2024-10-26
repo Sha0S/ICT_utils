@@ -33,7 +33,7 @@ const MESSAGE:  [[&str;2];16] = [
     ["Kiesők",                  "Failures"],
     ["db",                      "pcs"],
     ["Automata frissítés:",     "Automatic update:"],
-    ["Most",                    "Now"],
+    ["⟳",                    "⟳"],
     ["Automata frissítés befejeződött ",    "Automatic update done in "],
     ["ms alatt, új logok: ",                "ms, new logs: "],
 ];

@@ -269,7 +269,6 @@ impl AutoUpdate {
 
     fn its_time(&self) -> bool {
         if self.enabled && self.update_requested {
-            self.update_requested = false;
             return true;
         }
 
@@ -292,6 +291,7 @@ impl AutoUpdate {
         if let Some(prod) =
             products.get(self.product.expect("ERR: Auto Updater has no product ID!"))
         {
+            self.update_requested = false;
             self.update_start_time = Some(Local::now());
             let state_lock = self.state.clone();
             let log_lock = self.log_buffer.clone();
