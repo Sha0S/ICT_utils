@@ -394,23 +394,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3d1d046238990b9cf5bcde22a3fb3584ee5cf65fb2765f454ed428c7a0063da"
 
 [[package]]
-name = "aoi_uploader"
-version = "0.1.0"
-dependencies = [
- "ICT_config",
- "anyhow",
- "chrono",
- "env_logger 0.11.3",
- "log",
- "once_cell",
- "roxmltree 0.20.0",
- "tiberius",
- "tokio",
- "tokio-util",
- "tray-item",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
