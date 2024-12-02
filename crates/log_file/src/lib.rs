@@ -73,6 +73,15 @@ pub fn u64_to_time(mut x: u64) -> chrono::NaiveDateTime {
     date.and_time(time)
 }
 
+fn time_to_u64<T: chrono::Datelike + Timelike>(t: T) -> u64 {
+    (t.year() as u64 - 2000) * u64::pow(10, 10)
+        + t.month() as u64 * u64::pow(10, 8)
+        + t.day() as u64 * u64::pow(10, 6)
+        + t.hour() as u64 * u64::pow(10, 4)
+        + t.minute() as u64 * u64::pow(10, 2)
+        + t.second() as u64
+}
+
 fn local_time_to_u64(t: chrono::DateTime<chrono::Local>) -> u64 {
     (t.year() as u64 - 2000) * u64::pow(10, 10)
         + t.month() as u64 * u64::pow(10, 8)
@@ -128,14 +137,14 @@ impl Yield {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TLimit {
     None,
     Lim2(f32, f32),      // UL - LL
     Lim3(f32, f32, f32), // Nom - UL - LL
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TType {
     Pin,
     Shorts,
@@ -157,7 +166,28 @@ pub enum TType {
     Measurement,
     Current,
     BoundaryS,
+    Time,
+    Frequency,
+    Temperature,
+    Precentage,
+    Degrees,
     Unknown,
+}
+
+// conversion for FCT logs
+impl From<&str> for TType {
+    fn from(value: &str) -> Self {
+        match value {
+            "Ohm" => TType::Resistor,
+            "V" | "Vrms" => TType::Measurement,
+            "mA" | "A" => TType::Current,
+            "Hz" | "HZ" | "kHZ" | "KHZ" => TType::Frequency,
+            "%" => TType::Precentage,
+            "°" => TType::Degrees,
+            "°C" | "¢C" => TType::Temperature,
+            _ => TType::Unknown,
+        }
+    }
 }
 
 impl From<keysight_log::AnalogTest> for TType {
@@ -206,6 +236,11 @@ impl TType {
             TType::Pnp => "PNP".to_string(),
             TType::Pot => "Pot".to_string(),
             TType::Switch => "Switch".to_string(),
+            TType::Time => "Time".to_string(),
+            TType::Frequency => "Frequency".to_string(),
+            TType::Temperature => "Temperature".to_string(),
+            TType::Precentage => "Precentage".to_string(),
+            TType::Degrees => "Degrees".to_string(),
         }
     }
 
@@ -224,11 +259,16 @@ impl TType {
             TType::Current => "A".to_string(),
             TType::BoundaryS => "Result".to_string(),
             TType::Unknown => "Result".to_string(),
+            TType::Time => "s".to_string(),
+            TType::Frequency => "Hz".to_string(),
+            TType::Temperature => "°C".to_string(),
+            TType::Precentage => "%".to_string(),
+            TType::Degrees => "°".to_string(),
         }
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BResult {
     Pass,
     Fail,
@@ -307,7 +347,7 @@ pub struct FailureList {
     pub by_index: Vec<usize>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Test {
     name: String,
     ttype: TType,
@@ -341,6 +381,7 @@ impl Test {
     }
 }
 
+#[derive(Debug)]
 pub struct LogFile {
     source: OsString,
     DMC: String,
@@ -362,6 +403,178 @@ pub struct LogFile {
 
 impl LogFile {
     pub fn load(p: &Path) -> io::Result<Self> {
+        if p.extension().is_some_and(|f| f == "csv") {
+            LogFile::load_FCT(p)
+        } else {
+            LogFile::load_ICT(p)
+        }
+    }
+
+    pub fn load_FCT(p: &Path) -> io::Result<Self> {
+        println!("INFO: Loading FCT file {}", p.display());
+        let source = p.as_os_str().to_owned();
+
+        let file_ANSI = std::fs::read(p)?;
+        let decoded = encoding_rs::WINDOWS_1252.decode(&file_ANSI);
+
+        if decoded.2 {
+            println!("ERROR: Conversion had errors");
+        }
+
+        let lines = decoded.0.lines();
+
+        let mut DMC = None;
+        //let mut DMC_mb = None;
+        //let mut product_id = None;
+        //let mut SW_version = None;
+        let mut result = None;
+        let mut status = None;
+
+        let mut time_start = None;
+        let mut time_start_u64: u64 = 0;
+        let mut testing_time: u64 = 0;
+
+        let mut tests = Vec::new();
+
+        for line in lines {
+            let tokens: Vec<&str> = line.split(';').collect();
+            if tokens.len() < 2 {
+                //println!("ERROR: To few tokens! ({})", line);
+                continue;
+            }
+
+            match tokens[0] {
+                "SerialNumber" => DMC = Some(tokens[1].to_string()),
+                /*"MainSerial" => DMC_mb = Some(tokens[1].to_string()),
+                "Part Type" => {
+                    if let Some((t, sw)) = tokens[1].split_once('-') {
+                        product_id = Some(t.to_string());
+                        SW_version = Some(sw.to_string());
+                    }
+                }*/
+                "Start Time" => {
+                    if let Ok(time) =
+                        chrono::NaiveDateTime::parse_from_str(tokens[1], "%Y.%m.%d. %H:%M")
+                    {
+                        time_start = Some(time);
+                        time_start_u64 = time_to_u64(time);
+                    } else {
+                        println!("Time conversion error!");
+                    }
+                }
+                "Testing time(sec)" => {
+                    if let Ok(dt) = tokens[1].parse() {
+                        testing_time = dt;
+                        tests.push(Test {
+                            name: "Testing time".to_string(),
+                            ttype: TType::Time,
+                            result: (BResult::Pass, dt as f32),
+                            limits: TLimit::None,
+                        });
+                    }
+                }
+                "Result" => result = Some(tokens[1].to_string()),
+                "Error Code" => {
+                    if let Ok(s) = tokens[1].parse() {
+                        status = Some(s);
+                    }
+                }
+                _ => {
+                    if tokens.len() != 6 {
+                        println!("Tokens: {tokens:?}");
+                        continue;
+                    }
+                    if tokens[0] == "StepName" {
+                        continue;
+                    }
+
+                    if let Ok(mut meas) = tokens[2].parse::<f32>() {
+                        if tokens[4] == "mA" {
+                            meas /= 1000.0;
+                        }
+                        if tokens[4] == "kHZ" || tokens[4] == "kHz" {
+                            meas *= 1000.0;
+                        }
+
+                        let limits = if let Ok(mut min) = tokens[1].parse::<f32>() {
+                            if let Ok(mut max) = tokens[3].parse::<f32>() {
+                                if tokens[4] == "mA" {
+                                    min /= 1000.0;
+                                    max /= 1000.0;
+                                }
+                                if tokens[4] == "kHZ" || tokens[4] == "kHz" {
+                                    min *= 1000.0;
+                                    max *= 1000.0;
+                                }
+
+                                TLimit::Lim2(min, max)
+                            } else {
+                                TLimit::None
+                            }
+                        } else {
+                            TLimit::None
+                        };
+
+                        let result = (
+                            if tokens[5] == "Passed" {
+                                BResult::Pass
+                            } else {
+                                BResult::Fail
+                            },
+                            meas,
+                        );
+
+                        tests.push(Test {
+                            name: tokens[0].to_string(),
+                            ttype: TType::from(tokens[4]),
+                            result,
+                            limits,
+                        });
+                    }
+                }
+            }
+        }
+
+        if tests.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Logfile conatined no tests!",
+            ));
+        }
+
+        let time_end: u64 = if let Some(start) = time_start {
+            if testing_time > 0 {
+                let end_time = start + std::time::Duration::from_secs(testing_time);
+                time_to_u64(end_time)
+            } else {
+                time_start_u64
+            }
+        } else {
+            0
+        };
+
+        let result = LogFile {
+            source,
+            DMC: DMC.clone().unwrap_or_default(),
+            DMC_mb: DMC.unwrap_or_default(), //DMC_mb.unwrap_or_default(),
+            product_id: "Kaized CMD".to_string(), //product_id.unwrap_or_default(),
+            index: 1,
+            result: result.is_some_and(|f| f == "Passed"),
+            status: status.unwrap_or_default(),
+            status_str: String::new(),
+            time_start: time_start_u64,
+            time_end,
+            tests,
+            report: String::new(),
+            SW_version: String::new(), //SW_version.unwrap_or_default(),
+        };
+
+        //println!("Result: {result:?}");
+
+        Ok(result)
+    }
+
+    pub fn load_ICT(p: &Path) -> io::Result<Self> {
         println!("INFO: Loading (v2) file {}", p.display());
         let source = p.as_os_str().to_owned();
 
@@ -1160,7 +1373,7 @@ impl Board {
         only_failure: bool,
         only_final: bool,
         export_list: &[usize],
-        num_format: &rust_xlsxwriter::Format
+        num_format: &rust_xlsxwriter::Format,
     ) -> u16 {
         if self.logs.is_empty() {
             return c;
@@ -1205,7 +1418,8 @@ impl Board {
                 if let Some(res) = l.results.get(*t) {
                     if res.0 != BResult::Unknown {
                         let _ = sheet.write(3 + i as u32, c, res.0.print());
-                        let _ = sheet.write_number_with_format(3 + i as u32, c + 1, res.1, num_format);
+                        let _ =
+                            sheet.write_number_with_format(3 + i as u32, c + 1, res.1, num_format);
                     }
                 }
             }
@@ -1236,7 +1450,6 @@ impl Board {
         {
             return l;
         }
-
 
         let log_slice = {
             if only_final {
@@ -1275,7 +1488,7 @@ impl Board {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MbResult {
     pub start: u64,
     pub end: u64,
@@ -1976,8 +2189,7 @@ impl LogFileHandler {
                 TType::Shorts => continue,
                 TType::Testjet => continue,
                 TType::Unknown => {
-                    // this shouldn't happen
-                    println!("ERR: TType::Unknown in the final testlist at #{i}, name {tname}");
+                    //println!("ERR: TType::Unknown in the final testlist at #{i}, name {tname}");
                 }
                 _ => {
                     let mut limit: Option<&TLimit> = None;
@@ -2092,10 +2304,15 @@ impl LogFileHandler {
             // Print testlist
             for (i, t) in export_list.iter().enumerate() {
                 let c: u16 = (i * 2 + 3).try_into().unwrap();
-                let _ = sheet.write_with_format(0, c, &self.testlist[*t].0, &rust_xlsxwriter::Format::new().set_text_wrap());
+                let _ = sheet.write_with_format(
+                    0,
+                    c,
+                    &self.testlist[*t].0,
+                    &rust_xlsxwriter::Format::new().set_text_wrap(),
+                );
                 let _ = sheet.set_column_width(c, 16);
                 let _ = sheet.write(0, c + 1, self.testlist[*t].1.print());
-                let _ = sheet.set_column_width(c+1, 10);
+                let _ = sheet.set_column_width(c + 1, 10);
                 let _ = sheet.write(2, c, "Result");
                 let _ = sheet.write(2, c + 1, "Value");
             }
@@ -2131,7 +2348,7 @@ impl LogFileHandler {
                         settings.only_failed_panels,
                         settings.only_final_logs,
                         &export_list,
-                        &sci_format
+                        &sci_format,
                     );
                 }
             }
@@ -2195,7 +2412,7 @@ impl LogFileHandler {
                         settings.only_failed_panels,
                         settings.only_final_logs,
                         &export_list,
-                        &sci_format
+                        &sci_format,
                     );
                 }
             }

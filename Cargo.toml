@@ -58,6 +58,7 @@ pwhash = "1"
 winsafe = { version = "0.0.21", features = ["gui"] }
 roxmltree = "0.20.0"
 rust-ini = "0.21.0"
+encoding_rs = "0.8.35"
 
 # cargo update bitstream-io --precise 2.3.0
 # cargo update ravif --precise 0.11.6
