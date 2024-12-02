@@ -10,7 +10,3 @@
 - query: Get ICT (and CCL) results from a SQL database.
 - log_reader: Basic interpreter for logfiles. 
 - traceability_client and traceability_server: Improved MES system, with multiple user levels.
-
-## deprecated:
-- traceabilty: Basic MES implementation, was replaced with traceability_client + server.
-- aoi_uploader: Experimental program to interpret xml result files from AOI/AXI machines, and upload them to SQL.
