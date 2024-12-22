@@ -137,6 +137,30 @@ fn get_logs_after_t(
     Ok(ret)
 }
 
+// For FCT: gather directories macthing base_dir/YY/MM/DD/* 
+fn get_dirs_FCT(
+    p: &Path,
+    start: DateTime<Local>,
+    end: DateTime<Local>,
+) -> Vec<PathBuf> {
+    let mut ret = Vec::new();
+
+    let mut start_date = start.date_naive();
+    let end_date = end.date_naive();
+    while start_date <= end_date {
+        let subdir = start_date.format("%Y_%m_%d").to_string();
+        let new_path = p.join(subdir);
+        
+        if new_path.exists() {
+            ret.push(new_path);
+        }
+        
+        start_date = start_date.succ_opt().unwrap();
+    }
+
+    ret
+}
+
 // Turn YYMMDDHH format u64 int to "YY.MM.DD HH:00 - HH:59"
 fn u64_to_timeframe(mut x: u64) -> String {
     let y = x / u64::pow(10, 6);
