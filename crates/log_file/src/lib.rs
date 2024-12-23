@@ -1720,6 +1720,15 @@ pub struct HourlyYield {
 pub type HourlyStats = (u64, HourlyYield, Vec<(BResult, u64, String, bool)>); // (time, [(OK, NOK), (OK, NOK with gs)], Vec<Results>)
 pub type MbStats = (String, Vec<MbResult>, bool); // (DMC, Vec<(time, Multiboard result, Vec<Board results>)>, golden_sample)
 
+#[derive(Debug, Default)]
+pub struct TestStats {
+    pub min: f32,
+    pub max: f32,
+    pub avg: f64,
+    pub std_dev: f64,
+    pub cpk: f32
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum FlSettings {
     FirstPass,
@@ -2144,6 +2153,86 @@ impl LogFileHandler {
         }
 
         ret.sort_by_key(|k| k.1.last().unwrap().start);
+        ret
+    }
+
+    // Calculate statistics for test "testid"
+    pub fn get_statistics_for_test(&self, testid: usize) -> TestStats {
+        let mut ret = TestStats::default();
+
+        let mut sum: f64 = 0.0;
+        let mut count: u32 = 0;
+        let mut limits: Option<(f32,f32)> = None;
+
+        for mb in &self.multiboards {
+            for sb in &mb.boards {
+                for log in &sb.logs {
+                    if let Some(limit) = log.limits.get(testid) {
+                        match limit {
+                            TLimit::None => {},
+                            TLimit::Lim2(ul, ll) => {
+                                if let Some((min, max)) = limits.as_mut() {
+                                    *min = min.min(*ll);
+                                    *max = max.max(*ul);
+                                } else {
+                                    limits = Some((*ll,*ul));
+                                }
+                            },
+                            TLimit::Lim3(_, ul, ll) => {
+                                if let Some((min, max)) = limits.as_mut() {
+                                    *min = min.min(*ll);
+                                    *max = max.max(*ul);
+                                } else {
+                                    limits = Some((*ll,*ul));
+                                }
+                            },
+                        }
+                    }
+                    if let Some(result) = log.results.get(testid) {
+                        if result.0 != BResult::Unknown {
+                            if count == 0 {
+                                ret.min = result.1;
+                                ret.max = result.1;
+                            }
+
+                            ret.min = ret.min.min(result.1);
+                            ret.max = ret.max.max(result.1);
+
+                            sum += result.1 as f64;
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        if count > 1 {
+
+            ret.avg = sum / count as f64;
+
+            // Std Dev:
+            let mut diff_sqrd: f64 = 0.0;
+            for mb in &self.multiboards {
+                for sb in &mb.boards {
+                    for log in &sb.logs {
+                        if let Some(result) = log.results.get(testid) {
+                            if result.0 != BResult::Unknown {
+                                diff_sqrd += (result.1 as f64 - ret.avg).powi(2);
+                            }
+                        }
+                    }
+                }
+            }
+
+            ret.std_dev = (diff_sqrd / (count-1) as f64).sqrt();
+
+            if let Some((min, max)) = limits {
+                let cpk_1 = (ret.avg - min as f64) / (3.0*ret.std_dev);
+                let cpk_2 = (max as f64 - ret.avg) / (3.0*ret.std_dev);
+                ret.cpk = cpk_1.min(cpk_2) as f32;
+            }
+        }
+
         ret
     }
 
