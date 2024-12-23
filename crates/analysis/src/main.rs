@@ -409,6 +409,7 @@ struct MyApp {
     selected_test_buf: String,
     selected_test_index: usize,
     selected_test_results: (TType, Vec<(u64, usize, TResult, TLimit)>),
+    selected_test_statistics: TestStats,
 
     export_settings: ExportSettings,
 
@@ -469,6 +470,7 @@ impl Default for MyApp {
             selected_test_buf: String::new(),
             selected_test_index: 0,
             selected_test_results: (TType::Unknown, Vec::new()),
+            selected_test_statistics: TestStats::default(),
 
             export_settings: ExportSettings::default(),
             info_vp: LogInfoWindow::default(),
@@ -1082,6 +1084,9 @@ impl eframe::App for MyApp {
                             self.selected_test = x;
                             println!("INFO: Loading results for test nbr {}!", self.selected_test);
                             self.selected_test_results = lfh.get_stats_for_test(self.selected_test);
+                            self.selected_test_statistics = lfh.get_statistics_for_test(self.selected_test);
+
+                            println!("{:?}", self.selected_test_statistics);
                             reset_plot = true;
                             if self.selected_test_results.1.is_empty() {
                                 println!("\tERR: Loading failed!");
@@ -1090,6 +1095,18 @@ impl eframe::App for MyApp {
                             }
                         }
                     }
+
+                    // Statistics:
+
+                    ui.vertical_centered(|ui| {
+                        ui.label(format!("Min: {:+1.4E}   Max: {:+1.4E}   Avg: {:+1.4E}   StdDev: {:+1.4E}   Cpk: {}", 
+                            self.selected_test_statistics.min,
+                            self.selected_test_statistics.max,
+                            self.selected_test_statistics.avg,
+                            self.selected_test_statistics.std_dev,
+                            self.selected_test_statistics.cpk
+                        ));
+                    });
 
                     // Insert plot here
 
