@@ -2319,36 +2319,6 @@ impl LogFileHandler {
             Some(ret)
         }
     }
-    // We don't check here if the limits have changed.
-    // Can't properly show than in a spreadsheet anyway.
-    // We will notify the user about it in the UI only.
-    fn generate_limit_list(&self) -> Option<Vec<TLimit>> {
-        let mut ret: Vec<TLimit> = Vec::new();
-
-        'outerloop: for i in 0..self.testlist.len() {
-            for mb in &self.multiboards {
-                for sb in &mb.boards {
-                    for log in &sb.logs {
-                        if let Some(limit) = log.limits.get(i) {
-                            if log.results[i].0 != BResult::Unknown {
-                                ret.push(*limit);
-                                continue 'outerloop;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // if none of the boards has a result for the test, then push None
-            ret.push(TLimit::None);
-        }
-
-        if ret.is_empty() {
-            None
-        } else {
-            Some(ret)
-        }
-    }
 
     fn get_export_list(&self, settings: &ExportSettings) -> Vec<usize> {
         let mut ret: Vec<usize> = Vec::new();
@@ -2380,18 +2350,24 @@ impl LogFileHandler {
     pub fn export(&self, path: PathBuf, settings: &ExportSettings) {
         let mut book = rust_xlsxwriter::Workbook::new();
         let sheet = book.add_worksheet();
-        let sci_format = rust_xlsxwriter::Format::new().set_num_format("0.00E+00");
+        let sci_format = rust_xlsxwriter::Format::new().set_align(rust_xlsxwriter::FormatAlign::Center).set_num_format("0.00E+00");
+        let center_format = rust_xlsxwriter::Format::new().set_align(rust_xlsxwriter::FormatAlign::Center).set_num_format("0.00").set_text_wrap();
 
         if settings.vertical {
             // Create header
             let _ = sheet.write(0, 0, &self.product_id);
-            let _ = sheet.write(2, 0, "DMC");
+            let _ = sheet.write(6, 0, "DMC");
             let _ = sheet.set_column_width(0, 32);
-            let _ = sheet.write(2, 1, "Test time");
+            let _ = sheet.write(6, 1, "Test time");
             let _ = sheet.set_column_width(1, 18);
-            let _ = sheet.write(2, 2, "Log result");
+            
             let _ = sheet.write(0, 2, "Test name:");
-            let _ = sheet.write(1, 2, "Test limits:");
+            let _ = sheet.write(1, 2, "Test type:");
+            let _ = sheet.write(2, 2, "Lower limit:");
+            let _ = sheet.write(3, 2, "Upper limit:");
+            let _ = sheet.write(4, 2, "Std Dev:");
+            let _ = sheet.write(5, 2, "Cpk:");
+            let _ = sheet.write(6, 2, "Log result");
             let _ = sheet.set_column_width(2, 10);
 
             // Generate list of teststeps to be exported
@@ -2399,43 +2375,37 @@ impl LogFileHandler {
 
             // Print testlist
             for (i, t) in export_list.iter().enumerate() {
-                let c: u16 = (i * 2 + 3).try_into().unwrap();
-                let _ = sheet.write_with_format(
-                    0,
-                    c,
-                    &self.testlist[*t].0,
-                    &rust_xlsxwriter::Format::new().set_text_wrap(),
-                );
-                let _ = sheet.set_column_width(c, 16);
-                let _ = sheet.write(0, c + 1, self.testlist[*t].1.print());
-                let _ = sheet.set_column_width(c + 1, 10);
-                let _ = sheet.write(2, c, "Result");
-                let _ = sheet.write(2, c + 1, "Value");
-            }
+                let stats = self.get_statistics_for_test(*t);
 
-            // Print limits. Nominal value is skiped.
-            // It does not check if the limit changed.
-            if let Some(limits) = self.generate_limit_list() {
-                for (i, t) in export_list.iter().enumerate() {
-                    let c: u16 = (i * 2 + 3).try_into().unwrap();
-                    // Lim2 (f32,f32),     // UL - LL
-                    // Lim3 (f32,f32,f32)  // Nom - UL - LL
-                    match limits[*t] {
-                        TLimit::Lim3(_, ul, ll) => {
-                            let _ = sheet.write_number_with_format(1, c, ll, &sci_format);
-                            let _ = sheet.write_number_with_format(1, c + 1, ul, &sci_format);
-                        }
-                        TLimit::Lim2(ul, ll) => {
-                            let _ = sheet.write_number_with_format(1, c, ll, &sci_format);
-                            let _ = sheet.write_number_with_format(1, c + 1, ul, &sci_format);
-                        }
-                        TLimit::None => {}
-                    }
+                let c: u16 = (i * 2 + 3).try_into().unwrap();
+
+                // Testname and type
+                let _ = sheet.merge_range(0, c, 0, c+1, &self.testlist[*t].0, &center_format);
+                let _ = sheet.merge_range(1, c, 1, c+1, &self.testlist[*t].1.print(), &center_format);
+                
+                // Merge for the next 4 rows.
+                for row in 2..6 {
+                    let _ = sheet.merge_range(row, c, row, c+1, "", &center_format);
                 }
+
+                // Limits, StdDev, Cpk
+                if let TLimit::Lim2(ll,ul) = stats.limits {
+                    let _ = sheet.write_number_with_format(2, c, ll, &sci_format);
+                    let _ = sheet.write_number_with_format(3, c, ul, &sci_format);
+                    let _ = sheet.write_number_with_format(4, c, stats.std_dev, &sci_format);
+                    let _ = sheet.write_number_with_format(5, c, stats.cpk, &center_format);
+                }
+
+                
+                let _ = sheet.write_with_format(6, c, "Result", &center_format);
+                let _ = sheet.write_with_format(6, c + 1, "Value", &center_format);
+
+                let _ = sheet.set_column_width(c, 6);
+                let _ = sheet.set_column_width(c + 1, 10);
             }
 
             // Print test results
-            let mut l: u32 = 3;
+            let mut l: u32 = 7;
             for mb in &self.multiboards {
                 for b in &mb.boards {
                     l = b.export_to_line(
@@ -2455,51 +2425,43 @@ impl LogFileHandler {
             let _ = sheet.set_column_width(0, 22);
 
             let _ = sheet.write(2, 1, "Test type");
-            let _ = sheet.set_column_width(4, 16);
+            let _ = sheet.set_column_width(1, 16);
 
-            let _ = sheet.write(1, 3, "Test limits");
+            let _ = sheet.merge_range(1, 2, 1, 3, "Test limits", &center_format);
 
-            let _ = sheet.write(2, 2, "MIN");
+            let _ = sheet.write_with_format(2, 2, "Lower limit", &center_format);
             let _ = sheet.set_column_width(2, 10);
-            let _ = sheet.write(2, 3, "Nom");
+            let _ = sheet.write_with_format(2, 3, "Upper limit", &center_format);
             let _ = sheet.set_column_width(3, 10);
-            let _ = sheet.write(2, 4, "MAX");
+            let _ = sheet.write_with_format(2, 4, "Average", &center_format);
             let _ = sheet.set_column_width(4, 10);
+            let _ = sheet.write_with_format(2, 5, "Std Dev", &center_format);
+            let _ = sheet.set_column_width(5, 10);
+            let _ = sheet.write_with_format(2, 6, "Cpk", &center_format);
+            let _ = sheet.set_column_width(6, 10);
 
             // Generate list of teststeps to be exported
             let export_list = self.get_export_list(settings);
 
             // Print testlist
             for (i, t) in export_list.iter().enumerate() {
+                let stats = self.get_statistics_for_test(*t);
                 let l: u32 = (i + 3).try_into().unwrap();
                 let _ = sheet.write(l, 0, &self.testlist[*t].0);
                 let _ = sheet.write(l, 1, &self.testlist[*t].1.print());
-            }
 
-            // Print limits
-            // It does not check if the limit changed.
-            if let Some(limits) = self.generate_limit_list() {
-                for (i, t) in export_list.iter().enumerate() {
-                    let l: u32 = (i + 3).try_into().unwrap();
-                    // Lim2 (f32,f32),     // UL - LL
-                    // Lim3 (f32,f32,f32)  // Nom - UL - LL
-                    match limits[*t] {
-                        TLimit::Lim3(nom, ul, ll) => {
-                            let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
-                            let _ = sheet.write_number_with_format(l, 3, nom, &sci_format);
-                            let _ = sheet.write_number_with_format(l, 4, ul, &sci_format);
-                        }
-                        TLimit::Lim2(ul, ll) => {
-                            let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
-                            let _ = sheet.write_number_with_format(l, 4, ul, &sci_format);
-                        }
-                        TLimit::None => {}
-                    }
+                // Limits, StdDev, Cpk
+                if let TLimit::Lim2(ll,ul) = stats.limits {
+                    let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
+                    let _ = sheet.write_number_with_format(l, 3, ul, &sci_format);
+                    let _ = sheet.write_number_with_format(l, 4, stats.avg, &sci_format);
+                    let _ = sheet.write_number_with_format(l, 5, stats.std_dev, &sci_format);
+                    let _ = sheet.write_number_with_format(l, 6, stats.cpk, &center_format);
                 }
             }
 
             // Print test results
-            let mut c: u16 = 5;
+            let mut c: u16 = 7;
             for mb in &self.multiboards {
                 for b in &mb.boards {
                     c = b.export_to_col(
@@ -2542,14 +2504,6 @@ impl LogFileHandler {
         println!("Found none as {DMC}");
         None
     }
-
-    /*pub fn get_report_for_MB(&self, DMC: &str) -> Option<Vec<String>> {
-        if let Some(board) = self.get_mb_w_DMC(DMC) {
-            return Some(board.get_reports());
-        }
-
-        None
-    }*/
 
     pub fn get_report_for_SB(&self, DMC: &str) -> Option<String> {
         if let Some(board) = self.get_sb_w_DMC(DMC) {
