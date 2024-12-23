@@ -1724,6 +1724,10 @@ pub type MbStats = (String, Vec<MbResult>, bool); // (DMC, Vec<(time, Multiboard
 pub struct TestStats {
     pub min: f32,
     pub max: f32,
+
+    pub llimit_max: f32,
+    pub ulimit_min: f32,
+
     pub avg: f64,
     pub std_dev: f64,
     pub cpk: f32
@@ -2172,16 +2176,16 @@ impl LogFileHandler {
                             TLimit::None => {},
                             TLimit::Lim2(ul, ll) => {
                                 if let Some((min, max)) = limits.as_mut() {
-                                    *min = min.min(*ll);
-                                    *max = max.max(*ul);
+                                    *min = min.max(*ll);
+                                    *max = max.min(*ul);
                                 } else {
                                     limits = Some((*ll,*ul));
                                 }
                             },
                             TLimit::Lim3(_, ul, ll) => {
                                 if let Some((min, max)) = limits.as_mut() {
-                                    *min = min.min(*ll);
-                                    *max = max.max(*ul);
+                                    *min = min.max(*ll);
+                                    *max = max.min(*ul);
                                 } else {
                                     limits = Some((*ll,*ul));
                                 }
@@ -2204,6 +2208,11 @@ impl LogFileHandler {
                     }
                 }
             }
+        }
+
+        if let Some((min, max)) = limits {
+            ret.llimit_max = min;
+            ret.ulimit_min = max;
         }
 
         if count > 1 {
