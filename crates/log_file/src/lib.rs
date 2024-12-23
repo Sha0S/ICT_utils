@@ -137,8 +137,9 @@ impl Yield {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum TLimit {
+    #[default]
     None,
     Lim2(f32, f32),      // UL - LL
     Lim3(f32, f32, f32), // Nom - UL - LL
@@ -1724,9 +1725,7 @@ pub type MbStats = (String, Vec<MbResult>, bool); // (DMC, Vec<(time, Multiboard
 pub struct TestStats {
     pub min: f32,
     pub max: f32,
-
-    pub llimit_max: f32,
-    pub ulimit_min: f32,
+    pub limits: TLimit,
 
     pub avg: f64,
     pub std_dev: f64,
@@ -2211,8 +2210,7 @@ impl LogFileHandler {
         }
 
         if let Some((min, max)) = limits {
-            ret.llimit_max = min;
-            ret.ulimit_min = max;
+            ret.limits = TLimit::Lim2(max, min);
         }
 
         if count > 1 {
