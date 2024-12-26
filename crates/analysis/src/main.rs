@@ -408,6 +408,7 @@ struct MyApp {
     selected_test: usize,
     selected_test_buf: String,
     selected_test_index: usize,
+    selected_test_show_stats: bool,
     selected_test_results: (TType, Vec<(u64, usize, TResult, TLimit)>),
     selected_test_statistics: TestStats,
 
@@ -469,6 +470,7 @@ impl Default for MyApp {
             selected_test: 0,
             selected_test_buf: String::new(),
             selected_test_index: 0,
+            selected_test_show_stats: false,
             selected_test_results: (TType::Unknown, Vec::new()),
             selected_test_statistics: TestStats::default(),
 
@@ -1075,6 +1077,8 @@ impl eframe::App for MyApp {
                                 .speed(1.0)
                                 .clamp_range(0..=20),
                         );
+
+                        ui.checkbox(&mut self.selected_test_show_stats, "Statistics");
                     });
 
                     ui.separator();
@@ -1086,7 +1090,7 @@ impl eframe::App for MyApp {
                             self.selected_test_results = lfh.get_stats_for_test(self.selected_test);
                             self.selected_test_statistics = lfh.get_statistics_for_test(self.selected_test);
 
-                            println!("{:?}", self.selected_test_statistics);
+                            self.selected_test_index = 0;
                             reset_plot = true;
                             if self.selected_test_results.1.is_empty() {
                                 println!("\tERR: Loading failed!");
@@ -1097,17 +1101,18 @@ impl eframe::App for MyApp {
                     }
 
                     // Statistics:
-
-                    ui.vertical_centered(|ui| {
-                        ui.label(format!("Min: {:+1.4E}   Max: {:+1.4E}   Avg: {:+1.4E}   StdDev: {:+1.4E}   Cpk: {}", 
-                            self.selected_test_statistics.min,
-                            self.selected_test_statistics.max,
-                            self.selected_test_statistics.avg,
-                            self.selected_test_statistics.std_dev,
-                            self.selected_test_statistics.cpk
-                        ));
-                    });
-
+                    if self.selected_test_show_stats {
+                        ui.vertical_centered(|ui| {
+                            ui.label(format!("Min: {:+1.4E}   Max: {:+1.4E}   Avg: {:+1.4E}   StdDev: {:+1.4E}   Cpk: {}", 
+                                self.selected_test_statistics.min,
+                                self.selected_test_statistics.max,
+                                self.selected_test_statistics.avg,
+                                self.selected_test_statistics.std_dev,
+                                self.selected_test_statistics.cpk
+                            ));
+                        });
+                    }
+                    
                     // Insert plot here
 
                     let ppoints: PlotPoints = self
