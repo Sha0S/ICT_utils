@@ -1127,7 +1127,14 @@ impl eframe::App for MyApp {
                             if r.2 .0 == BResult::Unknown {
                                 return None;
                             }
-                            Some([r.0 as f64, r.2 .1 as f64])
+
+                            if r.2.1.is_finite() {
+                                Some([r.0 as f64, r.2 .1 as f64])
+                            } else {
+                                None
+                            }
+
+                            
                         })
                         .collect();
 
