@@ -2389,9 +2389,14 @@ impl LogFileHandler {
                 }
 
                 // Limits, StdDev, Cpk
-                if let TLimit::Lim2(ll,ul) = stats.limits {
+                if let TLimit::Lim2(ul,ll) = stats.limits {
                     let _ = sheet.write_number_with_format(2, c, ll, &sci_format);
-                    let _ = sheet.write_number_with_format(3, c, ul, &sci_format);
+
+                    // UL can be +INF
+                    if ul.is_finite() {
+                        let _ = sheet.write_number_with_format(3, c, ul, &sci_format);
+                    }
+                    
                     let _ = sheet.write_number_with_format(4, c, stats.std_dev, &sci_format);
                     let _ = sheet.write_number_with_format(5, c, stats.cpk, &center_format);
                 }
@@ -2451,9 +2456,14 @@ impl LogFileHandler {
                 let _ = sheet.write(l, 1, &self.testlist[*t].1.print());
 
                 // Limits, StdDev, Cpk
-                if let TLimit::Lim2(ll,ul) = stats.limits {
+                if let TLimit::Lim2(ul,ll) = stats.limits {
                     let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
-                    let _ = sheet.write_number_with_format(l, 3, ul, &sci_format);
+
+                    // UL can be +INF
+                    if ul.is_finite() {
+                        let _ = sheet.write_number_with_format(l, 3, ul, &sci_format);
+                    }
+                    
                     let _ = sheet.write_number_with_format(l, 4, stats.avg, &sci_format);
                     let _ = sheet.write_number_with_format(l, 5, stats.std_dev, &sci_format);
                     let _ = sheet.write_number_with_format(l, 6, stats.cpk, &center_format);
