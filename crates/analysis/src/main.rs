@@ -1143,9 +1143,17 @@ impl eframe::App for MyApp {
                             }
 
                             if let TLimit::Lim3(_, x, _) = r.3 {
-                                Some([r.0 as f64, x as f64])
+                                if x.is_finite() {
+                                    Some([r.0 as f64, x as f64])
+                                } else {
+                                    None
+                                }
                             } else if let TLimit::Lim2(x, _) = r.3 {
-                                Some([r.0 as f64, x as f64])
+                                if x.is_finite() {
+                                    Some([r.0 as f64, x as f64])
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }
