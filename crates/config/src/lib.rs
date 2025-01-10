@@ -90,6 +90,20 @@ impl Product {
             return false;
         }
 
+        // Support for DCDC DMCs
+        // Format: !YYDDDxxxx!********* (last 9 chars are version ID)
+        // version ID starts at char #11
+        if serial.starts_with('!') {
+            for pattern in &self.patterns {
+                if serial[11..].starts_with(pattern) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // VLLDDDxxxxxxx*
         for pattern in &self.patterns {
             if serial[13..].starts_with(pattern) {
                 return true;
