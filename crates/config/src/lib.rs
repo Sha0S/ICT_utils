@@ -318,11 +318,30 @@ pub fn load_gs_list_for_product<P: AsRef<Path> + std::fmt::Debug>(path: P, produ
 }
 
 pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
-    // VLLDDDxxxxxxx*
-    // x is 7 digits -> u32
     let mut ret = Vec::with_capacity(boards as usize);
     ret.push(start.to_string());
+    if boards < 2 {
+        return  ret;
+    }
 
+    // Support for DCDC DMCs
+    // Format: !YYDDDxxxx!********* (last 9 chars are version ID)
+    // it only uses 4 digits, not 7! Start pos is the same.
+    if start.starts_with('!') {
+        let sn = &start[6..10].parse::<u32>().expect("ER: Parsing error");
+
+        for i in 1..boards {
+            let nsn = sn + i as u32;
+            let mut next_sn = start.to_string();
+            next_sn.replace_range(6..10, &format!("{:04}", nsn));
+            ret.push(next_sn);
+        }
+    
+        return ret;
+    }
+
+    // VLLDDDxxxxxxx*
+    // x is 7 digits -> u32
     let sn = &start[6..13].parse::<u32>().expect("ER: Parsing error");
 
     for i in 1..boards {
@@ -337,6 +356,20 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
 
 pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> {
     let mut ret = Vec::with_capacity(max_pos as usize);
+
+    // Support for DCDC DMCs
+    // Format: !YYDDDxxxx!********* (last 9 chars are version ID)
+    // it only uses 4 digits, not 7! Start pos is the same.
+    if serial.starts_with('!') {
+        let sn = serial[6..10].parse::<u32>().expect("ER: Parsing error") - position as u32;
+        for i in sn..sn + max_pos as u32 {
+            let mut s = serial.to_string();
+            s.replace_range(6..10, &format!("{:04}", i));
+            ret.push(s);
+        }
+    
+        return ret
+    }
 
     let sn = serial[6..13].parse::<u32>().expect("ER: Parsing error") - position as u32;
     for i in sn..sn + max_pos as u32 {
