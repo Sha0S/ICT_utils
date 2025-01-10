@@ -408,12 +408,14 @@ impl IctResultApp {
                     *error_clone.lock().unwrap() =
                         Some(format!("Nem található eredmény a DMC-re: {}", DMC));
                     *loading_lock.lock().unwrap() = false;
+                    context.request_repaint();
                     return;
                 }
             } else {
                 // SQL error
                 *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
                 *loading_lock.lock().unwrap() = false;
+                context.request_repaint();
                 return;
             }
 
@@ -483,6 +485,7 @@ impl IctResultApp {
                 *error_clone.lock().unwrap() =
                     Some("SQL hiba lekérdezés közben! (ICT)".to_string());
                 *loading_lock.lock().unwrap() = false;
+                context.request_repaint();
                 return;
             }
 
@@ -532,7 +535,10 @@ impl IctResultApp {
                 // SQL error
                 *error_clone.lock().unwrap() =
                     Some("SQL hiba lekérdezés közben! (CCL)".to_string());
+                    
+                panel_lock.lock().unwrap().sort();
                 *loading_lock.lock().unwrap() = false;
+                context.request_repaint();
                 return;
             }
 
