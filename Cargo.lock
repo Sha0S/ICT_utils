@@ -46,6 +46,7 @@ name = "ICT_config"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "log",
  "rust-ini",
 ]
 

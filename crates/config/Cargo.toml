@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.82"
 rust-ini = "0.21.0"
+log = "0"
