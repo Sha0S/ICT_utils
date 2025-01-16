@@ -485,7 +485,7 @@ impl LogFile {
                         println!("Tokens: {tokens:?}");
                         continue;
                     }
-                    if tokens[0] == "StepName" {
+                    if tokens[0] == "StepName" || tokens[5] == "Info" {
                         continue;
                     }
 
@@ -508,7 +508,7 @@ impl LogFile {
                                     max *= 1000.0;
                                 }
 
-                                TLimit::Lim2(min, max)
+                                TLimit::Lim2(max, min)
                             } else {
                                 TLimit::None
                             }
@@ -554,19 +554,46 @@ impl LogFile {
             0
         };
 
+        // Generate report text for failed boards
+        let result = result.is_some_and(|f| f == "Passed");
+        let mut report = String::new();
+        if !result {
+            let mut lines = Vec::new();
+            for test in &tests {
+                if test.result.0 != BResult::Pass {
+                    lines.push(format!("{} HAS FAILED", test.name));
+                    lines.push(format!("Measured: {:+1.4E}", test.result.1));
+                    
+                    if let TLimit::Lim2(ul, ll) = test.limits {
+                        lines.push(format!("High Limit: {:+1.4E}", ul));
+                        lines.push(format!("Low Limit: {:+1.4E}", ll));
+                    }
+
+                    if test.ttype != TType::Unknown {
+                        lines.push(format!("{} test with unit {}", test.ttype.print(), test.ttype.unit()));
+                    }
+                    
+                    lines.push("\n----------------------------------------\n".to_string());
+                }
+            }
+
+            report = lines.join("\n");
+        }
+        
+
         let result = LogFile {
             source,
             DMC: DMC.clone().unwrap_or_default(),
             DMC_mb: DMC.unwrap_or_default(), //DMC_mb.unwrap_or_default(),
             product_id: "Kaized CMD".to_string(), //product_id.unwrap_or_default(),
             index: 1,
-            result: result.is_some_and(|f| f == "Passed"),
+            result,
             status: status.unwrap_or_default(),
             status_str: String::new(),
             time_start: time_start_u64,
             time_end,
             tests,
-            report: String::new(),
+            report,
             SW_version: String::new(), //SW_version.unwrap_or_default(),
         };
 
