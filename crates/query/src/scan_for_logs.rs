@@ -11,21 +11,24 @@ pub fn search_for_log(src: &str) -> Option<PathBuf> {
         return Some(path);
     } else {
         // try log_dir\\date_of_log\\log_filename
-        let dir = path.parent().unwrap();
-        let file = path.file_name().unwrap();
-        let (_, date_str) = file.to_str().unwrap().split_once('-').unwrap();
-        let sub_dir = format!(
-            "20{}_{}_{}",
-            &date_str[0..2],
-            &date_str[2..4],
-            &date_str[4..6]
-        );
-        let mut final_path = dir.join(sub_dir);
-        final_path.push(file);
-
-        println!("Final path: {:?}", final_path);
-        if final_path.exists() {
-            return Some(final_path);
+        let dir = path.parent()?;
+        let file = path.file_name()?;
+        let (_, date_str) = file.to_str()?.split_once('-')?;
+        
+        if date_str.len() > 6 {
+            let sub_dir = format!(
+                "20{}_{}_{}",
+                &date_str[0..2],
+                &date_str[2..4],
+                &date_str[4..6]
+            );
+            let mut final_path = dir.join(sub_dir);
+            final_path.push(file);
+    
+            println!("Final path: {:?}", final_path);
+            if final_path.exists() {
+                return Some(final_path);
+            }
         }
     }
 
