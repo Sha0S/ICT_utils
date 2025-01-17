@@ -594,6 +594,8 @@ impl eframe::App for IctResultApp {
 
                     self.query(context);
                 }
+
+                text_edit.response.request_focus();
             });
 
             ui.horizontal_centered(|ui| {
