@@ -9,6 +9,7 @@ use anyhow::bail;
 pub const CONFIG: &str = "config.ini";
 pub const PRODUCT_LIST: &str = "products";
 pub const GOLDEN_LIST: &str = "golden_samples";
+pub const DMC_MIN_LENGTH: usize = 15;
 
 /* Product
 '!' starts a comment
@@ -86,7 +87,7 @@ impl Product {
     }
 
     pub fn check_serial(&self, serial: &str) -> bool {
-        if serial.len() < 20 {
+        if serial.len() < DMC_MIN_LENGTH {
             return false;
         }
 
@@ -335,7 +336,7 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
     log::debug!("increment_sn: {start} number_of_boards: {boards}");
     let mut ret = Vec::with_capacity(boards as usize);
     ret.push(start.to_string());
-    if boards < 2 {
+    if boards < 2 || start.len() < DMC_MIN_LENGTH {
         return  ret;
     }
 
@@ -376,6 +377,11 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
 pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> {
     log::debug!("generate_serials: {serial}, pos: {position}, max: {max_pos}");
     let mut ret = Vec::with_capacity(max_pos as usize);
+
+    if max_pos < 2 || serial.len() < DMC_MIN_LENGTH {
+        ret.push(serial.to_string());
+        return ret;
+    }
 
     // Support for DCDC DMCs
     // Format: !YYDDDxxxx!********* (last 9 chars are version ID)

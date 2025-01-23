@@ -378,7 +378,16 @@ impl IctResultApp {
     fn query(&mut self, context: egui::Context) {
         println!("Query DMC: {}", self.DMC_input);
 
-        let DMC = self.DMC_input.clone();
+        let mut DMC = self.DMC_input.clone();
+
+        // Fix for DCDC.
+        // The two sides have different DMC, but only the BOT side is saved in the DB.
+        // If we get a TOP side DMC, then we will ad a 'B', turning it into the coresponding BOT side DMC.
+
+        if DMC.starts_with('!') && DMC.len()>ICT_config::DMC_MIN_LENGTH && DMC[11..].starts_with("V664653") {
+            let (start, end) = DMC.split_at(11);
+            DMC = format!("{}B{}", start, end);
+        }
 
         self.panel.lock().unwrap().clear();
 
@@ -577,7 +586,7 @@ impl eframe::App for IctResultApp {
                     || ok_button.clicked()
                     || (text_edit.response.lost_focus()
                         && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                    && self.DMC_input.len() > 15 && ! *self.loading.lock().unwrap()
+                        && ! *self.loading.lock().unwrap()
                 {
                     *self.loading.lock().unwrap() = true;
                     self.scan_instantly = false;
