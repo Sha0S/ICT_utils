@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     _ = eframe::run_native(
         format!("ICT Query (v{VERSION})").as_str(),
         options,
-        Box::new(|_| Box::new(IctResultApp::default(client, log_reader, starting_serial))),
+        Box::new(|_| Ok(Box::new(IctResultApp::default(client, log_reader, starting_serial)))),
     );
 
     Ok(())
@@ -686,7 +686,7 @@ impl eframe::App for IctResultApp {
                                             });
                                             row.col(|ui| {
                                                 ui.add(
-                                                    egui::Label::new(&result.Notes).truncate(true),
+                                                    egui::Label::new(&result.Notes).truncate(),
                                                 );
                                             });
                                         });

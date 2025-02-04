@@ -312,7 +312,7 @@ impl From<&str> for BResult {
     }
 }
 
-pub const DARK_GOLD: egui::Color32 = egui::Color32::from_rgb(235, 195, 0);
+pub const DARK_GOLD: ecolor::Color32 = ecolor::Color32::from_rgb(235, 195, 0);
 
 impl BResult {
     pub fn print(&self) -> String {
@@ -323,19 +323,19 @@ impl BResult {
         }
     }
 
-    pub fn into_color(self) -> egui::Color32 {
+    pub fn into_color(self) -> ecolor::Color32 {
         match self {
-            BResult::Pass => egui::Color32::GREEN,
-            BResult::Fail => egui::Color32::RED,
-            BResult::Unknown => egui::Color32::YELLOW,
+            BResult::Pass => ecolor::Color32::GREEN,
+            BResult::Fail => ecolor::Color32::RED,
+            BResult::Unknown => ecolor::Color32::YELLOW,
         }
     }
 
-    pub fn into_dark_color(self) -> egui::Color32 {
+    pub fn into_dark_color(self) -> ecolor::Color32 {
         match self {
-            BResult::Pass => egui::Color32::DARK_GREEN,
-            BResult::Fail => egui::Color32::RED,
-            BResult::Unknown => egui::Color32::BLACK,
+            BResult::Pass => ecolor::Color32::DARK_GREEN,
+            BResult::Fail => ecolor::Color32::RED,
+            BResult::Unknown => ecolor::Color32::BLACK,
         }
     }
 }
@@ -2480,7 +2480,7 @@ impl LogFileHandler {
                 let stats = self.get_statistics_for_test(*t);
                 let l: u32 = (i + 3).try_into().unwrap();
                 let _ = sheet.write(l, 0, &self.testlist[*t].0);
-                let _ = sheet.write(l, 1, &self.testlist[*t].1.print());
+                let _ = sheet.write(l, 1, self.testlist[*t].1.print());
 
                 // Limits, StdDev, Cpk
                 if let TLimit::Lim2(ul,ll) = stats.limits {

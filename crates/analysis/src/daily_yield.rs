@@ -322,12 +322,15 @@ impl DailyYieldWindow {
                 );
 
                 egui::TopBottomPanel::top("DatePicker").show(ctx, |ui| {
-                    ui.set_enabled(!*self.running.lock().unwrap());
+                    if *self.running.lock().unwrap() {
+                        ui.disable();
+                    }
+
                     ui.horizontal(|ui| {
                         ui.monospace("Date: ");
                         ui.add(
                             egui_extras::DatePickerButton::new(&mut self.date)
-                                .id_source("Date to scan"),
+                                .id_salt("Date to scan"),
                         );
 
                         if ui.button("Run").clicked() {

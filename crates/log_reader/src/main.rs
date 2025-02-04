@@ -51,7 +51,7 @@ fn main() {
     _ = eframe::run_native(
         &format!("ICT Log Reader (v{VERSION})"),
         options,
-        Box::new(|_| Box::new(IctLogReader::default(log))),
+        Box::new(|_| Ok(Box::new(IctLogReader::default(log)))),
     );
 }
 

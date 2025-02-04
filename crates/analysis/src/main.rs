@@ -211,7 +211,7 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::<MyApp>::default()
+            Ok(Box::<MyApp>::default())
         }),
     )
 }
@@ -581,7 +581,10 @@ impl eframe::App for MyApp {
 
             // "Menu" bar
             ui.horizontal(|ui| {
-                ui.set_enabled(!self.loading);
+                if self.loading {
+                    ui.disable();
+                }
+                
 
                 if ui.button("📁").clicked() && !self.loading {
                     if let Some(input_path) = rfd::FileDialog::new().pick_folder() {
@@ -612,7 +615,7 @@ impl eframe::App for MyApp {
             ui.horizontal(|ui| {
                 ui.add(
                     egui_extras::DatePickerButton::new(&mut self.date_start)
-                        .id_source("Starting time"),
+                        .id_salt("Starting time"),
                 );
 
                 let response = ui.add(
@@ -671,11 +674,14 @@ impl eframe::App for MyApp {
 
             ui.horizontal(|ui| {
                 ui.horizontal(|ui| {
-                    ui.set_enabled(self.time_end_use);
+
+                    if !self.time_end_use {
+                        ui.disable();
+                    }
 
                     ui.add(
                         egui_extras::DatePickerButton::new(&mut self.date_end)
-                            .id_source("Ending time"),
+                            .id_salt("Ending time"),
                     );
 
                     let response = ui.add(
@@ -705,7 +711,9 @@ impl eframe::App for MyApp {
 
             // Auto-update checkbox
             ui.horizontal(|ui| {
-                ui.set_enabled(self.auto_update.usable);
+                if !self.auto_update.usable {
+                    ui.disable();
+                }
 
                 ui.monospace(MESSAGE[AUTO_UPDATE][self.lang]);
                 ui.add(egui::Checkbox::without_text(&mut self.auto_update.enabled));
@@ -828,12 +836,14 @@ impl eframe::App for MyApp {
             // Failure list:
 
             ui.vertical(|ui| {
-                ui.set_enabled(!self.loading);
+                if self.loading{
+                    ui.disable();
+                }
                 ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
                 ui.separator();
 
                 let mut fl_change = false;
-                egui::ComboBox::from_id_source("Fails")
+                egui::ComboBox::from_id_salt("Fails")
                     .selected_text(match self.fl_setting {
                         FlSettings::FirstPass => MESSAGE[FIRST_T][self.lang],
                         FlSettings::All => MESSAGE[TOTAL][self.lang],
@@ -883,7 +893,7 @@ impl eframe::App for MyApp {
                                         if ui
                                             .add(
                                                 egui::Label::new(fail.name.to_owned())
-                                                    .truncate(true)
+                                                    .truncate()
                                                     .sense(Sense::click()),
                                             )
                                             .clicked()
@@ -981,7 +991,7 @@ impl eframe::App for MyApp {
                                         bar_width: 0.5,
                                         stroke: Stroke {
                                             width: 1.0,
-                                            color: Color32::GRAY,
+                                            color: egui::Color32::GRAY,
                                         },
                                         fill: Color32::RED,
                                     });
@@ -995,7 +1005,7 @@ impl eframe::App for MyApp {
                                     .allow_drag(false)
                                     .allow_boxed_zoom(false)
                                     .clamp_grid(true)
-                                    .set_margin_fraction(Vec2 { x: 0.05, y: 0.1 })
+                                    .set_margin_fraction(egui::emath::Vec2 { x: 0.05, y: 0.1 })
                                     .width(std::cmp::max(8, x.by_index.len()) as f32 * 30.0)
                                     .show(ui, |ui| {
                                         ui.bar_chart(chart);
@@ -1009,7 +1019,9 @@ impl eframe::App for MyApp {
         // Central panel
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-            ui.set_enabled(!self.loading);
+            if self.loading {
+                ui.disable();
+            }
 
             // Top "menu bar"
             ui.horizontal(|ui| {
@@ -1075,7 +1087,7 @@ impl eframe::App for MyApp {
                         ui.add(
                             egui::DragValue::new(&mut self.selected_test_index)
                                 .speed(1.0)
-                                .clamp_range(0..=20),
+                                .range(0..=20),
                         );
 
                         ui.checkbox(&mut self.selected_test_show_stats, "Statistics");
@@ -1516,7 +1528,6 @@ impl eframe::App for MyApp {
 
 fn y_formatter(
     tick: egui_plot::GridMark,
-    _max_digits: usize,
     _range: &RangeInclusive<f64>,
 ) -> String {
     format!("{:+1.1E}", tick.value)
@@ -1524,7 +1535,6 @@ fn y_formatter(
 
 fn x_formatter(
     tick: egui_plot::GridMark,
-    _max_digits: usize,
     _range: &RangeInclusive<f64>,
 ) -> String {
     let t: DateTime<Utc> = DateTime::from_timestamp(tick.value as i64, 0).unwrap();

@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 egui = "0"
+ecolor = "0"
 chrono = "0"
-encoding_rs = "0.8.35"
-rust_xlsxwriter = { version = "0.74.0", features = ["chrono"] }
+encoding_rs = "0"
+rust_xlsxwriter = { version = "0", features = ["chrono"] }
 
 ICT_config = { path = "..\\config"}

@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     _ = eframe::run_native(
         format!("ICT User Manager (v{VERSION})").as_str(),
         options,
-        Box::new(|_| Box::<MyApp>::default()),
+        Box::new(|_| Ok(Box::new(MyApp::default())))
     );
 
     Ok(())
@@ -169,7 +169,7 @@ impl eframe::App for MyApp {
                         });
 
                         ui.vertical(|ui| {
-                            egui::ComboBox::from_id_source("Level")
+                            egui::ComboBox::from_id_salt("Level")
                                 .selected_text(format!("{:?}", self.new_user.level))
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(

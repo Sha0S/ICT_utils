@@ -286,7 +286,7 @@ fn get_string(data: &[String], index: usize) -> Option<String> {
     }
 }
 
-fn get_prefix(string: &String, ch: char) -> &str {
+fn get_prefix(string: &str, ch: char) -> &str {
     if let Some(end) = string.find(ch) {
         &string[0..end]
     } else {
