@@ -126,22 +126,6 @@ fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: DateTi
     Ok(ret)
 }
 
-
-/*
-fn move_file_to_subdir(base_dir: &Path, subdir_name: String, file: &Path) -> std::io::Result<()> {
-    let new_dir = base_dir.join(subdir_name);
-    if !new_dir.exists() {
-        fs::create_dir(&new_dir)?;
-    }
-    let final_path = new_dir.join(file.file_name().unwrap());
-    println!("Moving {} to {}", file.display(), final_path.display());
-
-    fs::rename(file, final_path)?;
-
-    Ok(())
-}
-}*/
-
 fn organize_root_directory(product: &Product) -> Result<(), std::io::Error> {
     if product.get_tester_type() != TesterType::Ict {
         return Ok(());
@@ -580,14 +564,7 @@ impl MyApp {
         thread::spawn(move || {
             let logs_result = match mode {
                 LoadMode::Folder(_) => get_logs_in_path(&input_path, pm_lock.clone()),
-                LoadMode::ProductList(_) => {
-                    let raw = get_logs_for_timeframe(&product, start_dt, end_dt);
-                    
-                    match raw {
-                        Ok(_) => todo!(),
-                        Err(_) => raw,
-                    }
-                }
+                LoadMode::ProductList(_) => get_logs_for_timeframe(&product, start_dt, end_dt)
             };
 
             if let Ok(logs) = logs_result {
