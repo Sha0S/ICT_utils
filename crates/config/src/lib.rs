@@ -18,7 +18,7 @@ pub const DMC_MIN_LENGTH: usize = 15;
 Product Name | Boards on panel | Log file directory | DMC patterns
 */
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum TesterType {
     #[default]
     Ict,
