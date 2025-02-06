@@ -16,13 +16,20 @@ pub const DMC_MIN_LENGTH: usize = 15;
 Product Name | Boards on panel | Log file directory | DMC patterns
 */
 
+#[derive(Debug, Default, Clone, Copy)]
+pub enum TesterType {
+    #[default] Ict,
+    Fct
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Product {
     name: String,
     patterns: Vec<String>,
     boards_on_panel: u8,
     log_dir: PathBuf,
-    modifiers: Vec<String>
+    modifiers: Vec<String>,
+    tester_type: TesterType
 }
 
 pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bool) -> Vec<Product> {
@@ -48,13 +55,20 @@ pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bo
             }
         }
 
+        let tester_type = if modifiers.iter().any(|f| f == "#fct") {
+            TesterType::Fct
+        } else {
+            TesterType::Ict
+        };
+
         if log_dir.try_exists().is_ok_and(|x| x) || load_all {
             list.push(Product {
                 name: parts[0].to_owned(),
                 patterns,
                 boards_on_panel,
                 log_dir,
-                modifiers
+                modifiers,
+                tester_type
             });
         }
     }
@@ -124,6 +138,10 @@ impl Product {
 
     pub fn get_log_dir(&self) -> &PathBuf {
         &self.log_dir
+    }
+
+    pub fn get_tester_type(&self) -> TesterType {
+        self.tester_type
     }
 
     pub fn get_pos_from_logname(&self, log_file_name: &str) -> Option<u8> {
