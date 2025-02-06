@@ -9,6 +9,7 @@ use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 
 use chrono::*;
 
+use log::{debug, error};
 use ICT_config::*;
 use ICT_log_file::*;
 
@@ -31,60 +32,93 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PRODUCT_LIST: &str = ".\\products";
 include!("locals.rs");
 
-/*
-Currently in the _t functions it checks if the last modification to the files is between the limits.
-This wasn't the original behaviour, but it should be fine? It is also really fast.
-*/
+const ACCEPTED_EXTENSION: [&str; 2] = ["ict", "csv"];
+type PathAndTime = (PathBuf, DateTime<Local>);
 
 fn get_logs_in_path(
     p: &Path,
     pm_lock: Arc<RwLock<u32>>,
-) -> Result<Vec<(PathBuf, u64)>, std::io::Error> {
-    let mut ret: Vec<(PathBuf, u64)> = Vec::new();
+) -> Result<Vec<PathAndTime>, std::io::Error> {
+    let mut ret: Vec<PathAndTime> = Vec::new();
 
     for file in fs::read_dir(p)? {
         let file = file?;
         let path = file.path();
         if path.is_dir() {
             ret.append(&mut get_logs_in_path(&path, pm_lock.clone())?);
-        } else if let Ok(x) = path.metadata() {
-            ret.push((path.to_path_buf(), x.len()));
-            *pm_lock.write().unwrap() += 1;
+        } else {
+            // if the path is a file and it has NO extension or the extension is in the accepted list
+            if path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
+                if let Ok(x) = path.metadata() {
+                 let ct: DateTime<Local> = x.modified().unwrap().into();
+                     ret.push((path.to_path_buf(), ct));
+                 }
+             }
         }
     }
 
     Ok(ret)
 }
 
-fn is_dir_in_t(s: &Path, start: DateTime<Local>, end: DateTime<Local>) -> bool {
-    if let Ok(as_time) =
-        NaiveDate::parse_from_str(s.file_name().unwrap().to_str().unwrap(), "%Y_%m_%d")
-    {
-        if start.date_naive() <= as_time && end.date_naive() >= as_time {
-            return true;
-        }
+// Subrutines for locating logfiles for the specified product in the specified timeframe
+
+// 1) Get a list of the possible subfolders:
+fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: DateTime<Local>) -> Vec<PathBuf> {
+    let mut ret = Vec::new();
+
+    let mut start_date = start.date_naive();
+    let end_date = end.date_naive();
+
+    // ICT logs are also found in the root directory
+    if product.get_tester_type() == TesterType::Ict {
+        ret.push(product.get_log_dir().to_path_buf());
     }
-    false
+
+    while start_date <= end_date {
+        debug!("\tdate: {}", start_date);
+
+        let sub_dir = match product.get_tester_type() {
+            TesterType::Ict => {
+                     start_date.format("%Y_%m_%d")
+            },
+            TesterType::Fct => {
+                start_date.format("%y/%m/%d")
+            },
+        };
+
+        debug!("\tsubdir: {}", sub_dir);
+
+        let new_path = product.get_log_dir().join(sub_dir.to_string());
+        if new_path.exists() {
+            debug!("\t\tsubdir exists");
+            ret.push(new_path);
+        }
+
+        start_date = start_date.succ_opt().unwrap();
+    }
+
+    ret
 }
 
-fn get_logs_in_path_t(
-    p: &Path,
-    start: DateTime<Local>,
-    end: DateTime<Local>,
-) -> Result<Vec<(PathBuf, u64)>, std::io::Error> {
-    let mut ret: Vec<(PathBuf, u64)> = Vec::new();
 
-    for file in fs::read_dir(p)? {
-        let file = file?;
-        let path = file.path();
-        if path.is_dir() {
-            if is_dir_in_t(&path, start, end) {
-                ret.append(&mut get_logs_in_path_t(&path, start, end)?);
-            }
-        } else if let Ok(x) = path.metadata() {
-            let ct: DateTime<Local> = x.modified().unwrap().into();
-            if ct >= start && ct < end {
-                ret.push((path.to_path_buf(), x.len()));
+
+// 2) Get list of the possible logs in the subfolders + root folder for ICT
+fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: DateTime<Local>) -> Result<Vec<PathAndTime>, std::io::Error> {
+    let mut ret  = Vec::new();
+    let sub_dirs = get_subdirs_for_timeframe(product, start, end);
+
+    for dir in sub_dirs {
+        for file in fs::read_dir(dir)? {
+            let file = file?;
+            let path = file.path();
+
+            // if the path is a file and it has NO extension or the extension is in the accepted list
+            if path.is_file() && path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
+               if let Ok(x) = path.metadata() {
+                let ct: DateTime<Local> = x.modified().unwrap().into();
+                if ct >= start && ct < end {
+                    ret.push((path.to_path_buf(), ct));
+                }}
             }
         }
     }
@@ -92,6 +126,8 @@ fn get_logs_in_path_t(
     Ok(ret)
 }
 
+
+/*
 fn move_file_to_subdir(base_dir: &Path, subdir_name: String, file: &Path) -> std::io::Result<()> {
     let new_dir = base_dir.join(subdir_name);
     if !new_dir.exists() {
@@ -104,61 +140,43 @@ fn move_file_to_subdir(base_dir: &Path, subdir_name: String, file: &Path) -> std
 
     Ok(())
 }
+}*/
 
-// For AutoUpdater. Grabs files after time 't', but it will not scan subdirectories
-type PathAndTime = (PathBuf, DateTime<Local>);
+fn organize_root_directory(product: &Product) -> Result<(), std::io::Error> {
+    if product.get_tester_type() != TesterType::Ict {
+        return Ok(());
+    }
 
-fn get_logs_after_t(
-    base_path: &Path,
-    t: DateTime<Local>,
-) -> Result<Vec<PathAndTime>, std::io::Error> {
-    let mut ret: Vec<PathAndTime> = Vec::new();
-    let now = Local::now();
+    debug!("Starting organizing ");
 
-    for file in fs::read_dir(base_path)? {
+    for file in fs::read_dir(product.get_log_dir())? {
         let file = file?;
         let path = file.path();
-        let path_ext = path.extension();
-        if path.is_file() && (path_ext.is_none() || path_ext.is_some_and(|f| f == "ict")) {
+        let now = Local::now();
+
+        if path.is_file() && path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
             if let Ok(x) = path.metadata() {
-                let ct: DateTime<Local> = x.modified().unwrap().into();
-                if ct > t {
-                    ret.push((path.to_path_buf(), ct));
-                } else if now - ct > Duration::try_hours(4).unwrap() {
-                    // if the log is older than 4 hours, then move it to a subdir
-                    move_file_to_subdir(base_path, format!("{}", ct.format("%Y_%m_%d")), &path)?;
+                let ct: DateTime<Local> = x.modified()?.into();
+                if now - ct > Duration::hours(4) {
+                    let new_dir = product.get_log_dir().join(ct.format("%Y_%m_%d").to_string());
+                    debug!("\tnew dir: {:?}", new_dir);
+
+                    if !new_dir.exists() {
+                        fs::create_dir(&new_dir)?;
+                    }
+
+                    if let Some(filename) = path.file_name() {
+                        let new_path = new_dir.join(filename);
+                        debug!("\tnew_path: {:?}", new_path);
+
+                        fs::rename(path, new_path)?;
+                    }
                 }
             }
-        }
+        }        
     }
 
-    ret.sort_by_key(|k| k.1);
-
-    Ok(ret)
-}
-
-// For FCT: gather directories macthing base_dir/YY/MM/DD/* 
-fn get_dirs_FCT(
-    p: &Path,
-    start: DateTime<Local>,
-    end: DateTime<Local>,
-) -> Vec<PathBuf> {
-    let mut ret = Vec::new();
-
-    let mut start_date = start.date_naive();
-    let end_date = end.date_naive();
-    while start_date <= end_date {
-        let subdir = start_date.format("%Y_%m_%d").to_string();
-        let new_path = p.join(subdir);
-        
-        if new_path.exists() {
-            ret.push(new_path);
-        }
-        
-        start_date = start_date.succ_opt().unwrap();
-    }
-
-    ret
+    Ok(())
 }
 
 // Turn YYMMDDHH format u64 int to "YY.MM.DD HH:00 - HH:59"
@@ -319,7 +337,6 @@ impl AutoUpdate {
             self.update_start_time = Some(Local::now());
             let state_lock = self.state.clone();
             let log_lock = self.log_buffer.clone();
-            let path = prod.get_log_dir().clone();
 
             // ToDo:
             // Idealy we would get last-log from the last manual load.
@@ -330,9 +347,19 @@ impl AutoUpdate {
                 self.last_scan_time.unwrap() - Duration::try_minutes(5).unwrap()
             };
 
+            let product = prod.clone();
+
             thread::spawn(move || {
                 *state_lock.write().unwrap() = AUState::Loading;
-                if let Ok(logs) = get_logs_after_t(&path, start) {
+
+                if product.get_tester_type() == TesterType::Ict {
+                    match organize_root_directory(&product) {
+                        Ok(_) => (),
+                        Err(x) => error!("Error running organize_root_directory: {}", x),
+                    }
+                }
+
+                if let Ok(logs) = get_logs_for_timeframe(&product, start, chrono::Local::now()) {
                     *log_lock.write().unwrap() = logs;
                 }
 
@@ -548,19 +575,27 @@ impl MyApp {
         let px_lock = self.progress_x.clone();
         let frame = ctx.clone();
 
+        let product = self.product_list.get(self.selected_product).expect("Selected product outside of range.").clone();
+
         thread::spawn(move || {
             let logs_result = match mode {
                 LoadMode::Folder(_) => get_logs_in_path(&input_path, pm_lock.clone()),
-                LoadMode::ProductList(_) => get_logs_in_path_t(&input_path, start_dt, end_dt),
+                LoadMode::ProductList(_) => {
+                    let raw = get_logs_for_timeframe(&product, start_dt, end_dt);
+                    
+                    match raw {
+                        Ok(_) => todo!(),
+                        Err(_) => raw,
+                    }
+                }
             };
 
-            if let Ok(mut logs) = logs_result {
+            if let Ok(logs) = logs_result {
                 *pm_lock.write().unwrap() = logs.len() as u32;
                 (*lb_lock.write().unwrap()).clear();
                 frame.request_repaint_after(std::time::Duration::from_millis(500));
 
                 println!("Found {} logs to load.", logs.len());
-                logs.sort_by_key(|k| k.1);
 
                 for log in logs.iter().rev() {
                     (*lb_lock.write().unwrap()).push_from_file(&log.0);
