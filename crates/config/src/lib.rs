@@ -300,8 +300,22 @@ fn filter_file<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Vec<String> {
     list
 }
 
+// DMCs can start with '!' sign (DCDC), so we can't use comments here
+// but the GS list is auto generated from a SQL DB, so it shouldn't have any to begin with
 pub fn load_gs_list<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Vec<String> {
-    filter_file(path)
+    let mut list = Vec::new();
+
+    if let Ok(fileb) = fs::read_to_string(&path) {
+        for full_line in fileb.lines() {
+            if !full_line.is_empty() {
+                list.push(full_line.trim().to_string());
+            }
+        }
+    } else {
+        log::error!("load_gs_list: source ({:?}) not readable!", path);
+    }
+
+    list
 }
 
 pub fn export_gs_list(gs: &Vec<String>) -> anyhow::Result<()> {
