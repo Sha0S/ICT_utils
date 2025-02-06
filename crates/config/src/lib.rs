@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
 
 use std::{
-    fs, io::Write, path::{Path, PathBuf}
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
 };
 
 use anyhow::bail;
@@ -18,8 +20,9 @@ Product Name | Boards on panel | Log file directory | DMC patterns
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum TesterType {
-    #[default] Ict,
-    Fct
+    #[default]
+    Ict,
+    Fct,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -29,10 +32,13 @@ pub struct Product {
     boards_on_panel: u8,
     log_dir: PathBuf,
     modifiers: Vec<String>,
-    tester_type: TesterType
+    tester_type: TesterType,
 }
 
-pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bool) -> Vec<Product> {
+pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(
+    path: P,
+    load_all: bool,
+) -> Vec<Product> {
     let mut list = Vec::new();
 
     for line in filter_file(path) {
@@ -68,7 +74,7 @@ pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bo
                 boards_on_panel,
                 log_dir,
                 modifiers,
-                tester_type
+                tester_type,
             });
         }
     }
@@ -76,28 +82,26 @@ pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(path: P, load_all: bo
     list
 }
 
-pub fn get_product_for_serial<P: AsRef<Path> + std::fmt::Debug>(path: P, serial: &str) -> Option<Product> {
+pub fn get_product_for_serial<P: AsRef<Path> + std::fmt::Debug>(
+    path: P,
+    serial: &str,
+) -> Option<Product> {
     if serial.len() < 20 {
         return None;
     }
 
     let list = load_product_list(path, true);
 
-    for product in list {
-        if product.check_serial(serial) {
-            return Some(product)
-        }
-    }
-
-    None
+    list.into_iter().find(|product| product.check_serial(serial))
 }
 
 impl Product {
     pub fn unknown() -> Self {
-        Self { 
-            name: "Unknown product".to_string(), 
+        Self {
+            name: "Unknown product".to_string(),
             boards_on_panel: 1,
-            ..Default::default()}
+            ..Default::default()
+        }
     }
 
     pub fn check_serial(&self, serial: &str) -> bool {
@@ -152,7 +156,7 @@ impl Product {
             if self.modifiers.iter().any(|f| f == "#inv") {
                 Some(self.boards_on_panel - p)
             } else {
-                Some(p-1)
+                Some(p - 1)
             }
         } else {
             None
@@ -341,7 +345,7 @@ pub fn export_gs_list(gs: &Vec<String>) -> anyhow::Result<()> {
         Err(e) => {
             bail!("{e}");
         }
-        Ok(file) => file
+        Ok(file) => file,
     };
 
     for line in gs {
@@ -351,7 +355,10 @@ pub fn export_gs_list(gs: &Vec<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn load_gs_list_for_product<P: AsRef<Path> + std::fmt::Debug>(path: P, product: &Product) -> Vec<String> {
+pub fn load_gs_list_for_product<P: AsRef<Path> + std::fmt::Debug>(
+    path: P,
+    product: &Product,
+) -> Vec<String> {
     let all_gs = load_gs_list(path);
     let mut ret = Vec::new();
 
@@ -369,7 +376,7 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
     let mut ret = Vec::with_capacity(boards as usize);
     ret.push(start.to_string());
     if boards < 2 || start.len() < DMC_MIN_LENGTH {
-        return  ret;
+        return ret;
     }
 
     // Support for DCDC DMCs
@@ -399,7 +406,7 @@ pub fn increment_sn(start: &str, boards: u8) -> Vec<String> {
             next_sn.replace_range(6..13, &format!("{:07}", nsn));
             ret.push(next_sn);
         }
-    }  else {
+    } else {
         log::error!("increment_sn: DMC parsing error ({start})");
     }
 
@@ -430,8 +437,8 @@ pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> 
             ret.push(serial.to_string());
             log::error!("generate_serials: DCDC DMC parsing error ({serial})");
         }
-    
-        return ret
+
+        return ret;
     }
 
     // VLLDDDxxxxxxx*
@@ -447,7 +454,6 @@ pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> 
         ret.push(serial.to_string());
         log::error!("generate_serials: DMC parsing error ({serial})");
     }
-
 
     ret
 }
