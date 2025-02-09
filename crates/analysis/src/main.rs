@@ -22,6 +22,9 @@ use scan_dir::*;
 mod daily_yield;
 use daily_yield::*;
 
+mod fct_overlay;
+use fct_overlay::*;
+
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -426,6 +429,7 @@ struct MyApp {
     export_settings: ExportSettings,
 
     info_vp: LogInfoWindow,
+    fct_overlay: FctOverlay,
     scan_vp: ScanDirWindow,
     daily_yield_vp: DailyYieldWindow,
 }
@@ -487,6 +491,7 @@ impl Default for MyApp {
 
             export_settings: ExportSettings::default(),
             info_vp: LogInfoWindow::default(),
+            fct_overlay: FctOverlay::default(),
             scan_vp: ScanDirWindow::default(),
             daily_yield_vp: DailyYieldWindow::default(path_list),
         }
@@ -1065,6 +1070,10 @@ impl eframe::App for MyApp {
 
                 // Right side first:
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Overlay").clicked() {
+                        self.fct_overlay.enable();
+                    }
+
                     if ui.button("Scan").clicked() {
                         self.scan_vp.enable();
                     }
@@ -1524,6 +1533,10 @@ impl eframe::App for MyApp {
 
         if self.info_vp.enabled() {
             self.info_vp.update(ctx, self.log_master.clone());
+        }
+
+        if self.fct_overlay.enabled() {
+            self.fct_overlay.update(ctx, &self.hourly_stats, self.hourly_boards, self.hourly_gs);
         }
 
         if self.scan_vp.enabled() {
