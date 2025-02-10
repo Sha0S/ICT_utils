@@ -60,11 +60,14 @@ fn get_logs_in_path(
 // Subrutines for locating logfiles for the specified product in the specified timeframe
 
 // 1) Get a list of the possible subfolders:
-fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: DateTime<Local>) -> Vec<PathBuf> {
+fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Option<DateTime<Local>>) -> Vec<PathBuf> {
     let mut ret = Vec::new();
 
     let mut start_date = start.date_naive();
-    let end_date = end.date_naive();
+    let end_date = match end {
+        Some(x) =>x.date_naive(),
+        None => Local::now().date_naive(),
+    };
 
     // ICT logs are also found in the root directory
     if product.get_tester_type() == TesterType::Ict {
@@ -100,7 +103,7 @@ fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Dat
 
 
 // 2) Get list of the possible logs in the subfolders + root folder for ICT
-fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: DateTime<Local>) -> Result<Vec<PathAndTime>, std::io::Error> {
+fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: Option<DateTime<Local>>) -> Result<Vec<PathAndTime>, std::io::Error> {
     let mut ret  = Vec::new();
     let sub_dirs = get_subdirs_for_timeframe(product, start, end);
 
@@ -113,7 +116,7 @@ fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: DateTi
             if path.is_file() && path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
                if let Ok(x) = path.metadata() {
                 let ct: DateTime<Local> = x.modified().unwrap().into();
-                if ct >= start && ct < end {
+                if ct >= start && end.is_none_or(|f| ct < f ) {
                     ret.push((path.to_path_buf(), ct));
                 }}
             }
@@ -340,7 +343,7 @@ impl AutoUpdate {
                     }
                 }
 
-                if let Ok(logs) = get_logs_for_timeframe(&product, start, chrono::Local::now()) {
+                if let Ok(logs) = get_logs_for_timeframe(&product, start, None) {
                     *log_lock.write().unwrap() = logs;
                 }
 
@@ -524,13 +527,14 @@ impl MyApp {
 
         let end_dt = {
             if self.time_end_use {
-                TimeZone::from_local_datetime(
+                Some(
+                    TimeZone::from_local_datetime(
                     &Local,
                     &NaiveDateTime::new(self.date_end, self.time_end),
                 )
-                .unwrap()
+                .unwrap())
             } else {
-                Local::now()
+                None
             }
         };
 
