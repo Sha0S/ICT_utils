@@ -82,7 +82,7 @@ fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Opt
                      start_date.format("%Y_%m_%d")
             },
             TesterType::Fct => {
-                start_date.format("%y/%m/%d")
+                start_date.format("%Y/%m/%d")
             },
         };
 
