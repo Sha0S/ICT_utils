@@ -196,6 +196,28 @@ impl TcpServer {
                     String::from("Missing token!")
                 }
             }
+            "FCT_UPLOAD" => {
+                if let Some(log) = tokens.get(1) {
+                    match self.fct_upload(log).await {
+                        Ok(x) => {
+                            self.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+                            debug!("FCT UPLOAD return value: {}", x);
+                            x
+                        }
+        
+                        Err(x) => {
+                            self.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
+                            error!("Failed FCT UPLOAD: {x}");
+                            format!("ER: {x}")
+                        }
+                    }
+                } else {
+                    self.tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
+                    error!("Missing token after FCT_UPLOAD!");
+                    String::from("ER: Missing log token!")
+                } 
+            }
+
             "PING" => {
                 info!("PING token recieved! Tokens: {:?}", tokens);
 
@@ -454,6 +476,78 @@ impl TcpServer {
             );
         }
         qtext.pop(); // removes last ','
+
+        debug!("Upload: {}", qtext);
+        let query = Query::new(qtext);
+        query.execute(client).await?;
+
+        debug!("Upload OK");
+
+        Ok(String::from("OK"))
+    }
+
+    async fn fct_upload(&mut self, log: &str) -> anyhow::Result<String> {
+
+        debug!("Parsing log: {log}");
+        let fct_log = match ICT_log_file::LogFile::load(&PathBuf::from(&log)) {
+            Ok(l) => {
+                if l.is_ok() {
+                    l
+                } else {
+                    error!("Could not process log: {log}");
+                    bail!("Could not process log!")
+                }
+            },
+            Err(_) => {            
+                error!("Logfile parsing failed!");
+                bail!("Logfile parsing failed!");
+            },
+        };       
+
+        // Is it a FCT log?
+        if fct_log.get_type() != ICT_log_file::LogFileType::FCT {
+            error!("Logfile is not a FCT log!");
+            bail!("Logfile is not a FCT log!"); 
+        }
+
+        // Was MES enabled?
+        if !fct_log.get_mes_enabled() {
+            warn!("Logfile is an offline log!");
+            return Ok(String::from("OK"));
+        }
+
+
+        // Connect to the DB:
+        self.connect().await?;
+        let client = self.client.as_mut().unwrap();
+
+        let station = self.config.get_station_name().to_owned();
+
+        // Upload new results
+        let failed_list = fct_log.get_failed_tests().join(", ");
+        let note = if failed_list.is_empty() {
+                String::new()
+            } else {
+                format!("Failed: {}", failed_list)
+            };
+            
+        let qtext = format!(
+            "INSERT INTO [dbo].[SMT_FCT_Test] 
+            ([Serial_NMBR], [Station], [Result], [Date_Time], [SW_Version], [Notes])
+            VALUES
+            ('{}', '{}', '{}', '{}', '{}', '{}')",
+            fct_log.get_DMC(),
+            station,
+            if fct_log.get_status() == 0 {
+                "Passed"
+            } else {
+                "Failed"
+            },
+            ICT_log_file::u64_to_time(fct_log.get_time_end()),
+            fct_log.get_SW_ver(),
+            note,
+        );
+
 
         debug!("Upload: {}", qtext);
         let query = Query::new(qtext);
