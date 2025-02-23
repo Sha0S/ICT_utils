@@ -100,7 +100,13 @@ async fn main() -> anyhow::Result<()> {
     _ = eframe::run_native(
         format!("ICT Query (v{VERSION})").as_str(),
         options,
-        Box::new(|_| Ok(Box::new(IctResultApp::default(client, log_reader, starting_serial)))),
+        Box::new(|_| {
+            Ok(Box::new(IctResultApp::default(
+                client,
+                log_reader,
+                starting_serial,
+            )))
+        }),
     );
 
     Ok(())
@@ -384,7 +390,10 @@ impl IctResultApp {
         // The two sides have different DMC, but only the BOT side is saved in the DB.
         // If we get a TOP side DMC, then we will ad a 'B', turning it into the coresponding BOT side DMC.
 
-        if DMC.starts_with('!') && DMC.len()>ICT_config::DMC_MIN_LENGTH && DMC[11..].starts_with("V664653") {
+        if DMC.starts_with('!')
+            && DMC.len() > ICT_config::DMC_MIN_LENGTH
+            && DMC[11..].starts_with("V664653")
+        {
             let (start, end) = DMC.split_at(11);
             DMC = format!("{}B{}", start, end);
         }
@@ -408,7 +417,7 @@ impl IctResultApp {
             );
             query.bind(&DMC);
 
-            let logname: String;
+            let mut logname: String = String::new();
             if let Ok(result) = query.query(&mut c).await {
                 if let Some(row) = result.into_row().await.unwrap() {
                     logname = row.get::<&str, usize>(0).unwrap().to_string();
@@ -416,9 +425,6 @@ impl IctResultApp {
                     // No result found for the DMC
                     *error_clone.lock().unwrap() =
                         Some(format!("Nem található eredmény a DMC-re: {}", DMC));
-                    *loading_lock.lock().unwrap() = false;
-                    context.request_repaint();
-                    return;
                 }
             } else {
                 // SQL error
@@ -428,13 +434,14 @@ impl IctResultApp {
                 return;
             }
 
-            println!("Logname: {logname}");
             panel_lock.lock().unwrap().set_selected(&DMC);
 
             //  2 - We use it to determine the board number on the panel.
             //  And with the board number and the DMC we can generate all the serials on the panel.
 
-            let serials: Vec<String> = if let Some(product) =
+            let serials: Vec<String> = if logname.is_empty() {
+                vec![DMC]
+            } else if let Some(product) =
                 ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, &DMC)
             {
                 println!("Product is: {}", product.get_name());
@@ -544,12 +551,52 @@ impl IctResultApp {
                 // SQL error
                 *error_clone.lock().unwrap() =
                     Some("SQL hiba lekérdezés közben! (CCL)".to_string());
-                    
+
                 panel_lock.lock().unwrap().sort();
                 *loading_lock.lock().unwrap() = false;
                 context.request_repaint();
                 return;
             }
+
+            // 5 - Query for FCT results
+
+            println!("Serials: {:?}", serials);
+            let qtext = format!(
+                "SELECT Serial_NMBR, Station, Result, Date_Time, Notes
+                FROM SMT_FCT_Test 
+                WHERE Serial_NMBR IN ( {} );",
+                serial_string
+            );
+
+            println!("Query: {qtext}");
+            if let Ok(mut result) = c.query(qtext, &[]).await {
+                while let Some(row) = result.next().await {
+                    let row = row.unwrap();
+                    match row {
+                        tiberius::QueryItem::Row(x) => {
+                            // [Serial_NMBR],[Station],[Result],[Date_Time],[Notes]
+                            let serial = x.get::<&str, usize>(0).unwrap().to_owned();
+                            let station = x.get::<&str, usize>(1).unwrap().to_owned();
+                            let result = x.get::<&str, usize>(2).unwrap().to_owned();
+                            let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
+                            let note = x.get::<&str, usize>(4).unwrap_or_default().to_owned(); // Notes can be NULL!
+
+                            panel_lock.lock().unwrap().push(
+                                serial,
+                                station,
+                                result == "Passed",
+                                date_time,
+                                String::new(),
+                                note,
+                            );
+                        }
+                        tiberius::QueryItem::Metadata(_) => (),
+                    }
+                }
+            }
+
+            // Ignores if the FCT query fails, as it is experimental!
+            // This is intentional
 
             panel_lock.lock().unwrap().sort();
             *loading_lock.lock().unwrap() = false;
@@ -586,7 +633,7 @@ impl eframe::App for IctResultApp {
                     || ok_button.clicked()
                     || (text_edit.response.lost_focus()
                         && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                        && ! *self.loading.lock().unwrap()
+                    && !*self.loading.lock().unwrap()
                 {
                     *self.loading.lock().unwrap() = true;
                     self.scan_instantly = false;
@@ -685,9 +732,7 @@ impl eframe::App for IctResultApp {
                                                 });
                                             });
                                             row.col(|ui| {
-                                                ui.add(
-                                                    egui::Label::new(&result.Notes).truncate(),
-                                                );
+                                                ui.add(egui::Label::new(&result.Notes).truncate());
                                             });
                                         });
                                     }
@@ -751,15 +796,15 @@ impl eframe::App for IctResultApp {
                                                             res.Result,
                                                             panel_lock.selected_pos(i),
                                                         );
-    
+
                                                         if response.clicked() {
                                                             self.open_log(&res.Log_File_Name);
-                                                        } else if response
-                                                            .clicked_by(egui::PointerButton::Secondary)
-                                                        {
+                                                        } else if response.clicked_by(
+                                                            egui::PointerButton::Secondary,
+                                                        ) {
                                                             switch_selected = Some(i);
                                                         }
-    
+
                                                         if !res.Notes.is_empty() {
                                                             response.on_hover_text(&res.Notes);
                                                         }
