@@ -8,6 +8,7 @@ use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
+use log::error;
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
 mod keysight_log;
@@ -382,6 +383,12 @@ impl Test {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LogFileType {
+    ICT,
+    FCT
+}
+
 #[derive(Debug)]
 pub struct LogFile {
     source: OsString,
@@ -400,6 +407,9 @@ pub struct LogFile {
     tests: Vec<Test>,
     report: String,
     SW_version: String,
+
+    log_type: LogFileType,
+    mes_enabled: bool, // Can't actually check with ICT logs, but could implement something later
 }
 
 impl LogFile {
@@ -427,13 +437,15 @@ impl LogFile {
         let mut DMC = None;
         //let mut DMC_mb = None;
         //let mut product_id = None;
-        //let mut SW_version = None;
+        let mut SW_version = String::new();
         let mut result = None;
         let mut status = None;
 
         let mut time_start = None;
         let mut time_start_u64: u64 = 0;
         let mut testing_time: u64 = 0;
+
+        let mut mes_enabled = false;
 
         let mut tests = Vec::new();
 
@@ -446,13 +458,15 @@ impl LogFile {
 
             match tokens[0] {
                 "SerialNumber" => DMC = Some(tokens[1].to_string()),
-                /*"MainSerial" => DMC_mb = Some(tokens[1].to_string()),
+                /*"MainSerial" => DMC_mb = Some(tokens[1].to_string()),*/
                 "Part Type" => {
-                    if let Some((t, sw)) = tokens[1].split_once('-') {
-                        product_id = Some(t.to_string());
-                        SW_version = Some(sw.to_string());
+                    SW_version = tokens[1].to_string();
+                }
+                "MES" => {
+                    if tokens[1] == "1" {
+                        mes_enabled = true;
                     }
-                }*/
+                }
                 "Start Time" => {
                     if let Ok(time) =
                         chrono::NaiveDateTime::parse_from_str(tokens[1], "%Y.%m.%d. %H:%M")
@@ -594,7 +608,9 @@ impl LogFile {
             time_end,
             tests,
             report,
-            SW_version: String::new(), //SW_version.unwrap_or_default(),
+            SW_version,
+            log_type: LogFileType::FCT,
+            mes_enabled
         };
 
         //println!("Result: {result:?}");
@@ -1213,6 +1229,8 @@ impl LogFile {
             tests,
             report: report.join("\n"),
             SW_version,
+            log_type: LogFileType::ICT,
+            mes_enabled: true, // Can't actually check with ICT logs, but could implement something later
         })
     }
 
@@ -1266,6 +1284,19 @@ impl LogFile {
 
     pub fn get_tests(&self) -> &Vec<Test> {
         &self.tests
+    }
+
+    pub fn get_type(&self) -> LogFileType {
+        self.log_type
+    }
+
+    // Can't actually check with ICT logs, but could implement something later
+    pub fn get_mes_enabled(&self) -> bool {
+        if self.log_type != LogFileType::FCT {
+            error!("Checking for MES usage only works in FCT logs! It defaults to 'false'!");
+        }
+
+        self.mes_enabled
     }
 
     pub fn get_failed_tests(&self) -> Vec<String> {

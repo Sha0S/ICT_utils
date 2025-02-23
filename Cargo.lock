@@ -59,6 +59,8 @@ dependencies = [
  "ecolor 0.30.0",
  "egui 0.31.0",
  "encoding_rs",
+ "env_logger 0.9.3",
+ "log",
  "rust_xlsxwriter",
 ]
 
