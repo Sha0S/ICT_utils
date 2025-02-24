@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use eframe::egui;
-use egui::{Color32, ImageButton, Layout, ProgressBar, RichText, Sense, Stroke, Vec2};
+use egui::{Color32, ImageButton, Layout, ProgressBar, RichText, Sense, Stroke, StrokeKind, Vec2};
 use egui_dropdown::DropDownBox;
 use egui_extras::{Column, TableBuilder};
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
@@ -1559,7 +1559,7 @@ fn draw_result_box(ui: &mut egui::Ui, result: &BResult, gs: bool) -> egui::Respo
             .rect_filled(rect, 2.0, result.into_dark_color());
         if gs {
             ui.painter()
-                .rect_stroke(rect.shrink(1.0), 1.0, Stroke::new(2.0, DARK_GOLD));
+                .rect_stroke(rect.shrink(1.0), 1.0, Stroke::new(2.0, DARK_GOLD), StrokeKind::Inside);
         }
     }
 
