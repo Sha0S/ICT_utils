@@ -27,6 +27,7 @@ pub enum Message {
     AddGS,
     NewGS(winsafe::AnyResult<String>),
     UpdateTimer,
+    StartFctUpdate
 }
 
 pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {

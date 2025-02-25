@@ -99,6 +99,19 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // For Kaizen FCT, automatic scanning for logs
+    if let Ok(config) = ICT_config::Config::read(ICT_config::CONFIG) {
+        if config.get_station_name() == "Kaizen FCT" {
+            let fct_timer_tx = tx.clone();
+            tokio::spawn(async move {
+                loop {
+                    fct_timer_tx.send(Message::StartFctUpdate).unwrap();
+                    sleep(Duration::from_secs(60)).await;
+                }
+            });
+        }
+    }
+
     loop {
         match rx.recv() {
             Ok(Message::Quit) => {
@@ -252,6 +265,15 @@ async fn main() -> anyhow::Result<()> {
                     warn!("Adding GS failed: {}", e);
                 }
             },
+
+            Ok(Message::StartFctUpdate) => {
+                info!("Starting automatic FCT uploads");
+                let addr = act_tcp_address.lock().unwrap().clone();
+                if send_tcp_message(addr, "FCT_AUTO_UPDATE").is_err() {
+                    let _ = tx.send(Message::SetIcon(IconCollor::Yellow));
+                    error!("Failed to send TCP message!");
+                }
+            }
             _ => {}
         }
     }

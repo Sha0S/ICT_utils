@@ -5,3 +5,4 @@ config.ini
 copy.bat
 upload_fct_folder.bat
 users
+last_date.txt

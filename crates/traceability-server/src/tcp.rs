@@ -3,7 +3,7 @@
 use anyhow::bail;
 use log::{debug, error, info, warn};
 use std::{
-    io,
+    fs, io,
     path::PathBuf,
     sync::{mpsc::SyncSender, Arc, Mutex},
 };
@@ -23,6 +23,34 @@ static CONFIG: &str = "config.ini";
 
 static LIMIT: i32 = 3;
 static LIMIT_2: i32 = 6;
+
+fn get_subdirs_for_fct(start: &chrono::DateTime<chrono::Local>) -> Vec<PathBuf> {
+    let log_dir = PathBuf::from("D:\\Results");
+    let mut ret = Vec::new();
+
+    let mut start_date = start.date_naive();
+    let end_date = chrono::Local::now().date_naive();
+
+    while start_date <= end_date {
+        debug!("\tdate: {}", start_date);
+
+        let sub_dir = start_date.format("%Y\\%m\\%d");
+
+        debug!("\tsubdir: {}", sub_dir);
+
+        let new_path = log_dir.join(sub_dir.to_string());
+        debug!("\tfull path: {:?}", new_path);
+
+        if new_path.exists() {
+            debug!("\t\tsubdir exists");
+            ret.push(new_path);
+        }
+
+        start_date = start_date.succ_opt().unwrap();
+    }
+
+    ret
+}
 
 pub struct TcpServer {
     pub config: Config,
@@ -204,7 +232,7 @@ impl TcpServer {
                             debug!("FCT UPLOAD return value: {}", x);
                             x
                         }
-        
+
                         Err(x) => {
                             self.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                             error!("Failed FCT UPLOAD: {x}");
@@ -215,9 +243,21 @@ impl TcpServer {
                     self.tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
                     error!("Missing token after FCT_UPLOAD!");
                     String::from("ER: Missing log token!")
-                } 
+                }
             }
+            "FCT_AUTO_UPDATE" => match self.fct_auto_update().await {
+                Ok(x) => {
+                    self.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+                    debug!("FCT AUTO UPDATE return value: {}", x);
+                    x
+                }
 
+                Err(x) => {
+                    self.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
+                    error!("Failed FCT AUTO UPDATE: {x}");
+                    format!("ER: {x}")
+                }
+            },
             "PING" => {
                 info!("PING token recieved! Tokens: {:?}", tokens);
 
@@ -486,8 +526,149 @@ impl TcpServer {
         Ok(String::from("OK"))
     }
 
-    async fn fct_upload(&mut self, log: &str) -> anyhow::Result<String> {
+    // WIP
+    async fn fct_auto_update(&mut self) -> anyhow::Result<String> {
+        debug!("FCT auto update started");
+        let start_time = chrono::Local::now();
 
+        // 1 - get date_time of the last update
+        let last_date = fs::read_to_string("last_date.txt");
+
+        if last_date.is_err() {
+            error!("Error reading last_date.txt!");
+            bail!("Error reading last_date.txt!");
+        }
+
+        let last_date = last_date.unwrap();
+        debug!("Last date: {}", last_date);
+
+        let last_date = chrono::NaiveDateTime::parse_from_str(&last_date, "%Y-%m-%d %H:%M:%S");
+
+        if last_date.is_err() {
+            error!("Error converting last_date!");
+            bail!("Error converting last_date!");
+        }
+
+        let last_date = last_date.unwrap().and_local_timezone(chrono::Local);
+        let last_date = match last_date {
+            chrono::offset::LocalResult::Single(t) => t,
+            chrono::offset::LocalResult::Ambiguous(earliest, _) => earliest,
+            chrono::offset::LocalResult::None => {
+                error!("Error converting last_date! LocalResult::None!");
+                bail!("Error converting last_date! LocalResult::None!");
+            }
+        };
+
+        // 2 - Gather logs older than last_date
+
+        let sub_dirs = get_subdirs_for_fct(&last_date);
+        let mut log_paths = Vec::new();
+
+        for dir in sub_dirs {
+            for file in fs::read_dir(dir)? {
+                let file = file?;
+                let path = file.path();
+
+                // if the path is a file and it has NO extension or the extension is in the accepted list
+                if path.is_file() && path.extension().is_some_and(|f| f == "csv") {
+                    if let Ok(x) = path.metadata() {
+                        let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
+                        if ct >= last_date {
+                            let file_name = path.file_name().unwrap().to_str().unwrap();
+
+                            if !file_name.ends_with("CAN.csv") {
+                                debug!("Found log: {:?}", path);
+                                log_paths.push(path.to_path_buf());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Load the found logs
+
+        let mut logs = Vec::new();
+
+        for lp in log_paths {
+            match ICT_log_file::LogFile::load_FCT(&lp) {
+                Ok(log) => {
+                    if log.get_mes_enabled() {
+                        logs.push(log);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to load log {:?}: {}", lp, e);
+                }
+            }
+        }
+
+        debug!("Found {} eligible logs!", logs.len());
+
+        // Write the loaded logs to SQL
+
+        self.connect().await?;
+        let client = self.client.as_mut().unwrap();
+        let station = self.config.get_station_name().to_owned();
+
+        for log in logs {
+            let failed_list = log.get_failed_tests().join(", ");
+            let note = if failed_list.is_empty() {
+                String::new()
+            } else {
+                format!("Failed: {}", failed_list)
+            };
+
+            let qtext = format!(
+                "INSERT INTO [dbo].[SMT_FCT_Test] 
+                ([Serial_NMBR], [Station], [Result], [Date_Time], [SW_Version], [Notes])
+                VALUES
+                ('{}', '{}', '{}', '{}', '{}', '{}')",
+                log.get_DMC(),
+                station,
+                if log.get_status() == 0 {
+                    "Passed"
+                } else {
+                    "Failed"
+                },
+                ICT_log_file::u64_to_time(log.get_time_end()),
+                log.get_SW_ver(),
+                note,
+            );
+
+            let query = Query::new(qtext);
+            match query.execute(client).await {
+                Ok(_) => {
+                    debug!("Upload succesfull");
+                }
+                Err(e) => {
+                    //error!("Upload failed: {}", e);
+                    if let tiberius::error::Error::Server(token_error) = e {
+                        if token_error.code() == 2627 {
+                            debug!("Duplicated key error"); // Ignoring duplicated key errors
+                        } else {
+                            error!("Server error: {}", token_error);
+                            bail!("Upload failed!");
+                        }
+                    } else {
+                        error!("Upload failed! {e}");
+                        bail!("Upload failed!");
+                    }
+                }
+            };
+        }
+
+        // Write new last_date to file
+        let output_string = start_time.format("%Y-%m-%d %H:%M:%S").to_string();
+        let _ = fs::write("last_date.txt", output_string);
+
+        debug!("Converted: {}", last_date);
+
+        debug!("Upload OK");
+        Ok(String::from("OK"))
+    }
+
+    async fn fct_upload(&mut self, log: &str) -> anyhow::Result<String> {
         debug!("Parsing log: {log}");
         let fct_log = match ICT_log_file::LogFile::load(&PathBuf::from(&log)) {
             Ok(l) => {
@@ -497,17 +678,17 @@ impl TcpServer {
                     error!("Could not process log: {log}");
                     bail!("Could not process log!")
                 }
-            },
-            Err(_) => {            
+            }
+            Err(_) => {
                 error!("Logfile parsing failed!");
                 bail!("Logfile parsing failed!");
-            },
-        };       
+            }
+        };
 
         // Is it a FCT log?
         if fct_log.get_type() != ICT_log_file::LogFileType::FCT {
             error!("Logfile is not a FCT log!");
-            bail!("Logfile is not a FCT log!"); 
+            bail!("Logfile is not a FCT log!");
         }
 
         // Was MES enabled?
@@ -515,7 +696,6 @@ impl TcpServer {
             warn!("Logfile is an offline log!");
             return Ok(String::from("OK"));
         }
-
 
         // Connect to the DB:
         self.connect().await?;
@@ -526,11 +706,11 @@ impl TcpServer {
         // Upload new results
         let failed_list = fct_log.get_failed_tests().join(", ");
         let note = if failed_list.is_empty() {
-                String::new()
-            } else {
-                format!("Failed: {}", failed_list)
-            };
-            
+            String::new()
+        } else {
+            format!("Failed: {}", failed_list)
+        };
+
         let qtext = format!(
             "INSERT INTO [dbo].[SMT_FCT_Test] 
             ([Serial_NMBR], [Station], [Result], [Date_Time], [SW_Version], [Notes])
@@ -547,7 +727,6 @@ impl TcpServer {
             fct_log.get_SW_ver(),
             note,
         );
-
 
         debug!("Upload: {}", qtext);
         let query = Query::new(qtext);
