@@ -1559,7 +1559,7 @@ fn draw_result_box(ui: &mut egui::Ui, result: &BResult, gs: bool) -> egui::Respo
             .rect_filled(rect, 2.0, result.into_dark_color());
         if gs {
             ui.painter()
-                .rect_stroke(rect.shrink(1.0), 1.0, Stroke::new(2.0, DARK_GOLD), StrokeKind::Inside);
+                .rect_stroke(rect.shrink(1.0), 1.0, Stroke::new(2.0, DARK_GOLD), StrokeKind::Outside);
         }
     }
 
