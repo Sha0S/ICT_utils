@@ -11,6 +11,7 @@ use std::{
 use chrono::{NaiveDateTime, TimeDelta};
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder};
+use log::{debug, error};
 use tiberius::{Client, Query};
 use tokio::net::TcpStream;
 use tokio_stream::StreamExt;
@@ -49,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let config = match Config::read(PathBuf::from(".\\Config.ini")) {
         Ok(c) => c,
         Err(e) => {
-            println!("{e}");
+            error!("{e}");
             std::process::exit(0)
         }
     };
@@ -72,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if client_tmp.is_err() {
-        println!("ER: Connection to DB failed!");
+        error!("ER: Connection to DB failed!");
         return Ok(());
     }
     let mut client = client_tmp?;
@@ -370,19 +371,19 @@ impl IctResultApp {
             return;
         }
 
-        println!("Trying to open log: {log}");
+        debug!("Trying to open log: {log}");
         if let Some(path) = search_for_log(log) {
             let res = std::process::Command::new(&self.log_viewer)
                 .arg(path)
                 .spawn();
-            println!("{:?}", res);
+            debug!("{:?}", res);
         } else {
-            println!("Log not found!");
+            error!("Log not found!");
         }
     }
 
     fn query(&mut self, context: egui::Context) {
-        println!("Query DMC: {}", self.DMC_input);
+        debug!("Query DMC: {}", self.DMC_input);
 
         let mut DMC = self.DMC_input.clone();
 
@@ -444,9 +445,9 @@ impl IctResultApp {
             } else if let Some(product) =
                 ICT_config::get_product_for_serial(ICT_config::PRODUCT_LIST, &DMC)
             {
-                println!("Product is: {}", product.get_name());
+                debug!("Product is: {}", product.get_name());
                 if let Some(pos) = product.get_pos_from_logname(&logname) {
-                    println!("Position is: {pos} (using base 0)");
+                    debug!("Position is: {pos} (using base 0)");
                     ICT_config::generate_serials(&DMC, pos, product.get_bop())
                 } else {
                     vec![DMC]
@@ -462,7 +463,7 @@ impl IctResultApp {
                 .collect::<Vec<String>>()
                 .join(", ");
 
-            println!("Serials: {:?}", serials);
+            debug!("Serials: {:?}", serials);
             let qtext = format!(
                 "SELECT Serial_NMBR, Station, Result, Date_Time, Log_File_Name, Notes
                 FROM SMT_Test 
@@ -470,7 +471,7 @@ impl IctResultApp {
                 serial_string
             );
 
-            println!("Query: {qtext}");
+            debug!("Query: {qtext}");
             if let Ok(mut result) = c.query(qtext, &[]).await {
                 while let Some(row) = result.next().await {
                     let row = row.unwrap();
@@ -507,7 +508,7 @@ impl IctResultApp {
 
             // 4 - Query the serials for CCL results
 
-            println!("Serials: {:?}", serials);
+            debug!("Serials: {:?}", serials);
             let qtext = format!(
                 "SELECT Barcode, Result, Side, Line, Operator, RowUpdated
                 FROM AOI_RESULTS 
@@ -515,7 +516,7 @@ impl IctResultApp {
                 serial_string
             );
 
-            println!("Query: {qtext}");
+            debug!("Query: {qtext}");
             if let Ok(mut result) = c.query(qtext, &[]).await {
                 while let Some(row) = result.next().await {
                     let row = row.unwrap();
@@ -560,7 +561,7 @@ impl IctResultApp {
 
             // 5 - Query for FCT results
 
-            println!("Serials: {:?}", serials);
+            debug!("Serials: {:?}", serials);
             let qtext = format!(
                 "SELECT Serial_NMBR, Station, Result, Date_Time, Notes
                 FROM SMT_FCT_Test 
@@ -568,7 +569,7 @@ impl IctResultApp {
                 serial_string
             );
 
-            println!("Query: {qtext}");
+            debug!("Query: {qtext}");
             if let Ok(mut result) = c.query(qtext, &[]).await {
                 while let Some(row) = result.next().await {
                     let row = row.unwrap();
