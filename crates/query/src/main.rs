@@ -508,7 +508,6 @@ impl IctResultApp {
 
             // 4 - Query the serials for CCL results
 
-            debug!("Serials: {:?}", serials);
             let qtext = format!(
                 "SELECT Barcode, Result, Side, Line, Operator, RowUpdated
                 FROM AOI_RESULTS 
@@ -560,8 +559,6 @@ impl IctResultApp {
             }
 
             // 5 - Query for FCT results
-
-            debug!("Serials: {:?}", serials);
             let qtext = format!(
                 "SELECT Serial_NMBR, Station, Result, Date_Time, Notes
                 FROM SMT_FCT_Test 
@@ -596,8 +593,51 @@ impl IctResultApp {
                 }
             }
 
-            // Ignores if the FCT query fails, as it is experimental!
-            // This is intentional
+            // 5 - Query for AOI results
+            let qtext = format!(
+                "SELECT Serial_NMBR, Station, Result, Date_Time, Failed, Pseudo_error
+                FROM SMT_AOI_RESULTS 
+                WHERE Serial_NMBR IN ( {} );",
+                serial_string
+            );
+
+            debug!("AOI query: {qtext}");
+            if let Ok(mut result) = c.query(qtext, &[]).await {
+                while let Some(row) = result.next().await {
+                    let row = row.unwrap();
+                    match row {
+                        tiberius::QueryItem::Row(x) => {
+                            // [Serial_NMBR],[Station],[Result],[Date_Time],[Failed],[Pseudo_error]
+                            let serial = x.get::<&str, usize>(0).unwrap().to_owned();
+                            let station = x.get::<&str, usize>(1).unwrap().to_owned();
+                            let result = x.get::<&str, usize>(2).unwrap().to_owned();
+                            let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
+                            let failed = x.get::<&str, usize>(4).unwrap_or_default().to_owned();
+                            let pseudo = x.get::<&str, usize>(5).unwrap_or_default().to_owned();
+
+                            let mut note = String::new();
+                            if !failed.is_empty() {
+                                note = note + "Failed: " + &failed + "; ";
+                            }
+
+                            if !pseudo.is_empty() {
+                                note = note + "Pseudo: " + &pseudo;
+                            }
+
+
+                            panel_lock.lock().unwrap().push(
+                                serial,
+                                station,
+                                result == "PASS",
+                                date_time,
+                                String::new(),
+                                note,
+                            );
+                        }
+                        tiberius::QueryItem::Metadata(_) => (),
+                    }
+                }
+            }
 
             panel_lock.lock().unwrap().sort();
             *loading_lock.lock().unwrap() = false;
