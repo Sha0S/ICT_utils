@@ -176,11 +176,6 @@ pub struct Config {
     log_reader: String,
     MES_server: String,
     station_name: String,
-    other_stations: Vec<String>,
-
-    AOI_dir: String,
-    AOI_line: String,
-    AOI_chunks: usize,
 }
 
 impl Config {
@@ -229,24 +224,6 @@ impl Config {
                 if let Some(station) = app.get("STATION") {
                     c.station_name = station.to_owned();
                 }
-
-                for station in app.get_all("OTHER_STATIONS") {
-                    c.other_stations.push(station.to_string());
-                }
-            }
-
-            if let Some(app) = config.section(Some("AOI")) {
-                if let Some(dir) = app.get("DIR") {
-                    c.AOI_dir = dir.to_owned();
-                }
-
-                if let Some(dir) = app.get("LINE") {
-                    c.AOI_line = dir.to_owned();
-                }
-
-                if let Some(chunks) = app.get("CHUNKS") {
-                    c.AOI_chunks = chunks.parse().unwrap_or(10);
-                }
             }
         } else {
             return Err(anyhow::Error::msg(format!(
@@ -284,22 +261,6 @@ impl Config {
 
     pub fn get_station_name(&self) -> &str {
         &self.station_name
-    }
-
-    pub fn get_other_stations(&self) -> &Vec<String> {
-        &self.other_stations
-    }
-
-    pub fn get_AOI_dir(&self) -> &str {
-        &self.AOI_dir
-    }
-
-    pub fn get_AOI_line(&self) -> &str {
-        &self.AOI_line
-    }
-
-    pub fn get_AOI_chunks(&self) -> usize {
-        self.AOI_chunks
     }
 }
 

@@ -9,7 +9,7 @@ use std::{
 };
 use tiberius::{Client, Query};
 use tokio::{
-    io::{AsyncWriteExt, Interest},
+    io::Interest,
     net::TcpStream,
 };
 use tokio_stream::StreamExt;
@@ -258,18 +258,6 @@ impl TcpServer {
                     format!("ER: {x}")
                 }
             },
-            "PING" => {
-                info!("PING token recieved! Tokens: {:?}", tokens);
-
-                match self.ping_other_servers(tokens).await {
-                    Ok(x) => x,
-
-                    Err(x) => {
-                        error!("Failed to PING: {x}");
-                        format!("ER: {x}")
-                    }
-                }
-            }
             "TEST" => {
                 info!("TEST token recieved! Tokens: {:?}", tokens);
                 format!("TEST token recieved! Tokens: {:?}", tokens)
@@ -735,19 +723,6 @@ impl TcpServer {
         debug!("Upload OK");
 
         Ok(String::from("OK"))
-    }
-
-    async fn ping_other_servers(&mut self, tokens: Vec<&str>) -> anyhow::Result<String> {
-        for station in self.config.get_other_stations() {
-            info!("PING to station: {station}");
-            let mut stream = TcpStream::connect(station).await?;
-            stream
-                .write_all(format!("TEST|{}", tokens[1]).as_bytes())
-                .await?;
-            stream.shutdown().await?;
-        }
-
-        Ok("PING succesfull".to_string())
     }
 
     pub async fn update_golden_samples(&mut self) -> anyhow::Result<String> {
