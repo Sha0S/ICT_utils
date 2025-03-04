@@ -19,5 +19,6 @@ tokio-stream = "0"
 egui_extras = "0"
 image = "0"
 rfd = "0"
+log = "0"
 
 ICT_config = { path = "..\\config"}
