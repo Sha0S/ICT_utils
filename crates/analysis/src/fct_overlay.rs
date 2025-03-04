@@ -2,11 +2,12 @@ use egui_extras::{Column, TableBuilder};
 
 pub struct FctOverlay {
     enabled: bool,
+    pos: ICT_config::OverlayPos
 }
 
 impl FctOverlay {
-    pub fn default() -> Self {
-        Self { enabled: false }
+    pub fn new(pos:  ICT_config::OverlayPos) -> Self {
+        Self { enabled: false, pos }
     }
 
     pub fn enabled(&self) -> bool {
@@ -27,8 +28,8 @@ impl FctOverlay {
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("FctOverlay"),
             egui::ViewportBuilder::default()
-                .with_position(egui::Pos2 { x: 90.0, y: 820.0 })
-                .with_inner_size(egui::Vec2 { x: 1470.0, y: 90.0 })
+                .with_position(egui::Pos2 { x: self.pos.x, y: self.pos.y })
+                .with_inner_size(egui::Vec2 { x: self.pos.w, y: self.pos.h })
                 .with_decorations(false)
                 .with_window_level(egui::WindowLevel::AlwaysOnTop), 
                 //.with_mouse_passthrough(true)
@@ -51,6 +52,9 @@ impl FctOverlay {
                 egui::CentralPanel::default()
                     //.frame(egui::Frame::none())
                     .show(ctx, |ui| {
+                        let rows = ((self.pos.h - 30.0) / (14.0+3.0)).floor().max(1.0) as usize;
+
+
                         TableBuilder::new(ui)
                             .striped(true)
                             .column(Column::exact(150.0))
@@ -68,7 +72,7 @@ impl FctOverlay {
                                 header.col(|_| {});
                             })
                             .body(|mut body| {
-                                for hour in hourly_stats.iter().rev().take(3) {
+                                for hour in hourly_stats.iter().rev().take(rows) {
                                     let used_yield = if hourly_gs {
                                         if hourly_boards {
                                             &hour.1.boards_with_gs

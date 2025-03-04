@@ -426,7 +426,7 @@ struct MyApp {
     export_settings: ExportSettings,
 
     info_vp: LogInfoWindow,
-    fct_overlay: FctOverlay,
+    fct_overlay: Option<FctOverlay>,
 }
 
 impl Default for MyApp {
@@ -435,6 +435,14 @@ impl Default for MyApp {
         let time_end = NaiveTime::from_hms_opt(23, 59, 59).unwrap();
 
         let product_list = load_product_list(PRODUCT_LIST, false);
+
+        
+        let config = ICT_config::Config::read(ICT_config::CONFIG);
+        let overlay = match config {
+            Ok(con) => con.get_overlay_pos(),
+            Err(_) => None,
+        };
+        let fct_overlay = overlay.map(FctOverlay::new);
 
         Self {
             status: "".to_owned(),
@@ -481,7 +489,7 @@ impl Default for MyApp {
 
             export_settings: ExportSettings::default(),
             info_vp: LogInfoWindow::default(),
-            fct_overlay: FctOverlay::default(),
+            fct_overlay,
         }
     }
 }
@@ -1059,8 +1067,10 @@ impl eframe::App for MyApp {
 
                 // Right side first:
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Overlay").clicked() {
-                        self.fct_overlay.enable();
+                    if let Some(ol) = &mut self.fct_overlay {
+                        if ui.button("Overlay").clicked() {
+                           ol.enable();
+                        }
                     }
                 });
             });
@@ -1516,8 +1526,10 @@ impl eframe::App for MyApp {
             self.info_vp.update(ctx, self.log_master.clone());
         }
 
-        if self.fct_overlay.enabled() {
-            self.fct_overlay.update(ctx, &self.hourly_stats, self.hourly_boards, self.hourly_gs);
+        if let Some(ol) = &mut self.fct_overlay {
+            if ol.enabled() {
+                ol.update(ctx, &self.hourly_stats, self.hourly_boards, self.hourly_gs);
+            }
         }
     }
 }

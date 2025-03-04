@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::bail;
+use log::{debug, error};
 
 pub const CONFIG: &str = "config.ini";
 pub const PRODUCT_LIST: &str = "products";
@@ -166,6 +167,14 @@ impl Product {
 
 /* Config */
 
+#[derive(Debug, Copy, Clone)]
+pub struct OverlayPos {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32
+}
+
 #[derive(Default)]
 pub struct Config {
     server: String,
@@ -176,6 +185,8 @@ pub struct Config {
     log_reader: String,
     MES_server: String,
     station_name: String,
+
+    overlay_pos: Option<OverlayPos>,
 }
 
 impl Config {
@@ -225,6 +236,36 @@ impl Config {
                     c.station_name = station.to_owned();
                 }
             }
+
+            if let Some(app) = config.section(Some("OVERLAY")) {
+                let mut x: f32 = -1.0;
+                let mut y: f32 = -1.0;
+                let mut w: f32 = -1.0;
+                let mut h: f32 = -1.0;
+
+                if let Some(viewer) = app.get("X") {
+                    x = viewer.parse().unwrap_or(-2.00);
+                }
+
+                if let Some(viewer) = app.get("Y") {
+                    y = viewer.parse().unwrap_or(-2.00);
+                }
+
+                if let Some(viewer) = app.get("W") {
+                    w = viewer.parse().unwrap_or(-2.00);
+                }
+
+                if let Some(viewer) = app.get("H") {
+                    h = viewer.parse().unwrap_or(-2.00);
+                }
+
+                if x >= 0.0 && y >= 0.0 && w > 0.0 && h > 0.0 {
+                    c.overlay_pos = Some(OverlayPos { x, y, w, h });
+                    debug!("Overlay position is: {x}x{y} {w}x{h}");
+                } else {
+                    error!("Could not create overlay_pos: {x}x{y} {w}x{h}");
+                }
+            }
         } else {
             return Err(anyhow::Error::msg(format!(
                 "ER: Could not read configuration file! [{}]",
@@ -261,6 +302,10 @@ impl Config {
 
     pub fn get_station_name(&self) -> &str {
         &self.station_name
+    }
+
+    pub fn get_overlay_pos(&self) -> Option<OverlayPos> {
+        self.overlay_pos
     }
 }
 
