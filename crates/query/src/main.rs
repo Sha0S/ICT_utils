@@ -779,18 +779,20 @@ impl eframe::App for IctResultApp {
             egui::TopBottomPanel::bottom("FW_bot_panel").exact_height(200.0).show(ctx, |ui| {
                 match self.panel.lock().unwrap().is_selected_ok(&self.station) {
                     PanelResult::Ok => {
-                        ui.centered_and_justified(|ui| {
+                        ui.vertical_centered(|ui| {
                             ui.label(RichText::new("OK").color(Color32::GREEN).size(100.0));
                         } );
                     },
                     PanelResult::Warning(message) => {
-                        ui.centered_and_justified(|ui| {
+                        ui.vertical_centered(|ui| {
                             ui.label(RichText::new("NOK").color(Color32::ORANGE).size(100.0));
+                            ui.label(RichText::new(&message).color(Color32::ORANGE).size(30.0));
                         } );
                     },
                     PanelResult::Nok(message) => {
-                        ui.centered_and_justified(|ui| {
+                        ui.vertical_centered(|ui| {
                             ui.label(RichText::new("NOK").color(Color32::RED).size(100.0));
+                            ui.label(RichText::new(&message).color(Color32::RED).size(30.0));
                         } );
                     },
                     PanelResult::None => {},
