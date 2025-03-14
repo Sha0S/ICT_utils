@@ -9,7 +9,7 @@ use std::{
 };
 
 use chrono::{NaiveDateTime, TimeDelta};
-use egui::Vec2;
+use egui::{Color32, RichText, Vec2};
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error};
 use tiberius::{Client, Query};
@@ -83,13 +83,7 @@ async fn main() -> anyhow::Result<()> {
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
 
-    // Start egui
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size(egui::Vec2 { x: 550.0, y: 250.0 })
-            .with_icon(load_icon()),
-        ..Default::default()
-    };
+
 
     let log_reader = config.get_log_reader().to_string();
     let starting_serial = if args.len() >= 2 {
@@ -98,12 +92,24 @@ async fn main() -> anyhow::Result<()> {
         String::new()
     };
 
+    let station = config.get_station_name().to_string();
+    let window_height = if station == "FW" { 450.0 } else { 250.0 };
+
+    // Start egui
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size(egui::Vec2 { x: 550.0, y: window_height })
+            .with_icon(load_icon()),
+        ..Default::default()
+    };
+
     _ = eframe::run_native(
         format!("ICT Query (v{VERSION})").as_str(),
         options,
         Box::new(|_| {
             Ok(Box::new(IctResultApp::default(
                 client,
+                station,
                 log_reader,
                 starting_serial,
             )))
@@ -127,6 +133,14 @@ struct Panel {
     boards: Vec<Board>,
 }
 
+#[derive(Debug, PartialEq)]
+enum PanelResult {
+    Ok,
+    Nok(String),
+    Warning(String),
+    None
+}
+
 impl Panel {
     fn new() -> Panel {
         Panel {
@@ -146,6 +160,28 @@ impl Panel {
             self.selected = self.boards[sel].Serial_NMBR.clone();
         }
     }
+
+    fn is_selected_ok(&self, station: &str) -> PanelResult {
+        if !self.boards.is_empty() && station == "FW" {
+            if let Some(board) = self.boards.get(self.selected_pos) {
+                let ict_res = board.get_ict_result();
+                let aoi_res = board.get_aoi_result();
+
+                if aoi_res.0.is_some_and( |f | !f ) || aoi_res.1.is_some_and( |f | !f )  {
+                    return PanelResult::Nok("".to_string());
+                } else if aoi_res.0.is_none() || aoi_res.1.is_none() {
+                    return PanelResult::Warning("".to_string());
+                } else if ict_res.is_none_or(|f| !f) {
+                    return PanelResult::Nok("()".to_string());
+                } else {
+                    return PanelResult::Ok;
+                }
+            }
+        }
+
+
+        PanelResult::None
+    } 
 
     fn selected_pos(&self, i: usize) -> bool {
         self.selected_pos == i
@@ -297,6 +333,33 @@ impl Board {
         }
     }
 
+    fn get_ict_result(&self) -> Option<bool> {
+        for result in &self.results {
+            if result.Station.starts_with("ICT") {
+                return Some(result.Result)
+            }
+        }
+
+        None
+    }
+
+    fn get_aoi_result(&self) -> (Option<bool>, Option<bool>) {
+        let mut top = None;
+        let mut bot = None;
+
+        for result in &self.results {
+            if result.Station.starts_with("AOI") & result.Station.starts_with("HARAN") {
+                if result.Station.ends_with("TOP") && top.is_none() {
+                    top = Some(result.Result);
+                } else if result.Station.ends_with("BOT") && bot.is_none() {
+                    bot = Some(result.Result);
+                }
+            }
+        }
+
+        (bot, top)
+    }
+
     fn push(
         &mut self,
         Station: String,
@@ -336,6 +399,7 @@ enum AppMode {
 
 struct IctResultApp {
     client: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
+    station: String,
     mode: AppMode,
     loading: Arc<Mutex<bool>>,
     log_viewer: String,
@@ -350,11 +414,12 @@ struct IctResultApp {
 }
 
 impl IctResultApp {
-    fn default(client: Client<Compat<TcpStream>>, log_viewer: String, DMC_input: String) -> Self {
+    fn default(client: Client<Compat<TcpStream>>, station: String, log_viewer: String, DMC_input: String) -> Self {
         let scan_instantly = !DMC_input.is_empty();
 
         IctResultApp {
             client: Arc::new(tokio::sync::Mutex::new(client)),
+            station,
             mode: AppMode::Board,
             loading: Arc::new(Mutex::new(false)),
             log_viewer,
@@ -595,7 +660,7 @@ impl IctResultApp {
 
             // 5 - Query for AOI results
             let qtext = format!(
-                "SELECT Serial_NMBR, Station, Result, Date_Time, Failed, Pseudo_error
+                "SELECT Serial_NMBR, Station, Result, Date_Time, Program, Operator
                 FROM SMT_AOI_RESULTS 
                 WHERE Serial_NMBR IN ( {} );",
                 serial_string
@@ -612,27 +677,33 @@ impl IctResultApp {
                             let station = x.get::<&str, usize>(1).unwrap().to_owned();
                             let result = x.get::<&str, usize>(2).unwrap().to_owned();
                             let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
-                            let failed = x.get::<&str, usize>(4).unwrap_or_default().to_owned();
-                            let pseudo = x.get::<&str, usize>(5).unwrap_or_default().to_owned();
+                            let program = x.get::<&str, usize>(4).unwrap_or_default().to_owned();
+                            let operator = x.get::<&str, usize>(5).unwrap_or_default().to_owned();
 
-                            let mut note = String::new();
-                            if !failed.is_empty() {
-                                note = note + "Failed: " + &failed + "; ";
+                            if station.len() > 3 && program.len() > 3 {
+                                let sub_station = if operator.is_empty() {
+                                    "AOI/AXI"
+                                } else {
+                                    "HARAN"
+                                };
+
+                                let side = program[program.len()-3..].to_string();
+                                let line_number = &station[station.len()-2..];
+
+
+                                let station = format!("{sub_station} - L{line_number} - {side}");
+                                
+
+
+                                panel_lock.lock().unwrap().push(
+                                    serial,
+                                    station,
+                                    result == "Pass",
+                                    date_time,
+                                    String::new(),
+                                    program,
+                                );
                             }
-
-                            if !pseudo.is_empty() {
-                                note = note + "Pseudo: " + &pseudo;
-                            }
-
-
-                            panel_lock.lock().unwrap().push(
-                                serial,
-                                station,
-                                result == "PASS",
-                                date_time,
-                                String::new(),
-                                note,
-                            );
                         }
                         tiberius::QueryItem::Metadata(_) => (),
                     }
@@ -702,6 +773,29 @@ impl eframe::App for IctResultApp {
             });
         });
 
+        if self.station == "FW" {
+            egui::TopBottomPanel::bottom("FW_bot_panel").exact_height(200.0).show(ctx, |ui| {
+                match self.panel.lock().unwrap().is_selected_ok(&self.station) {
+                    PanelResult::Ok => {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(RichText::new("OK").color(Color32::GREEN).size(100.0));
+                        } );
+                    },
+                    PanelResult::Warning(message) => {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(RichText::new("NOK").color(Color32::YELLOW).size(100.0));
+                        } );
+                    },
+                    PanelResult::Nok(message) => {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(RichText::new("NOK").color(Color32::RED).size(100.0));
+                        } );
+                    },
+                    PanelResult::None => {},
+                } 
+            });
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut panel_lock = self.panel.lock().unwrap();
             let mut switch_selected: Option<usize> = None;
@@ -714,7 +808,7 @@ impl eframe::App for IctResultApp {
                                 .striped(true)
                                 .column(Column::initial(30.0).resizable(true))
                                 .column(Column::initial(80.0).resizable(true)) // Result
-                                .column(Column::initial(100.0).resizable(true)) // Station
+                                .column(Column::initial(150.0).resizable(true)) // Station
                                 .column(Column::initial(110.0).resizable(true)) // Time
                                 .column(Column::remainder().resizable(true)) // Notes
                                 .header(20.0, |mut header| {
