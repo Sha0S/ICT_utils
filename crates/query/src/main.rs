@@ -168,11 +168,13 @@ impl Panel {
                 let aoi_res = board.get_aoi_result();
 
                 if aoi_res.0.is_some_and( |f | !f ) || aoi_res.1.is_some_and( |f | !f )  {
-                    return PanelResult::Nok("".to_string());
+                    return PanelResult::Nok("Bukott AOI-on!".to_string());
+                } else if ict_res.is_none() {
+                    return PanelResult::Nok("Nincs ICT eredménye!".to_string());
+                } if ict_res.is_some_and(|f| !f) {
+                    return PanelResult::Nok("Bukott ICT-n!".to_string());
                 } else if aoi_res.0.is_none() || aoi_res.1.is_none() {
-                    return PanelResult::Warning("".to_string());
-                } else if ict_res.is_none_or(|f| !f) {
-                    return PanelResult::Nok("()".to_string());
+                    return PanelResult::Warning("Nincs AOI eredménye!".to_string());
                 } else {
                     return PanelResult::Ok;
                 }
