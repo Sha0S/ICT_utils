@@ -348,7 +348,7 @@ impl Board {
         let mut bot = None;
 
         for result in &self.results {
-            if result.Station.starts_with("AOI") & result.Station.starts_with("HARAN") {
+            if result.Station.starts_with("AOI") && result.Station.starts_with("HARAN") {
                 if result.Station.ends_with("TOP") && top.is_none() {
                     top = Some(result.Result);
                 } else if result.Station.ends_with("BOT") && bot.is_none() {
