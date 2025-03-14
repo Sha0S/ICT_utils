@@ -561,12 +561,18 @@ impl MyApp {
         let px_lock = self.progress_x.clone();
         let frame = ctx.clone();
 
-        let product = self.product_list.get(self.selected_product).expect("Selected product outside of range.").clone();
+        let product = self.product_list.get(self.selected_product).map(|f| f.clone() );
 
         thread::spawn(move || {
             let logs_result = match mode {
                 LoadMode::Folder(_) => get_logs_in_path(&input_path, pm_lock.clone()),
-                LoadMode::ProductList(_) => get_logs_for_timeframe(&product, start_dt, end_dt)
+                LoadMode::ProductList(_) => {
+                    if let Some(p) = product {
+                        get_logs_for_timeframe(&product, start_dt, end_dt)
+                    } else {
+                        Ok(Vec::new())
+                    }    
+                }
             };
 
             if let Ok(logs) = logs_result {
