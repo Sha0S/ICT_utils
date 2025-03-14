@@ -890,7 +890,7 @@ impl eframe::App for IctResultApp {
                             .striped(true)
                             .column(Column::initial(30.0).resizable(true))
                             .column(Column::initial(250.0).resizable(true)) // Result
-                            .column(Column::initial(100.0).resizable(true)) // Station
+                            .column(Column::initial(150.0).resizable(true)) // Station
                             .column(Column::remainder().resizable(true)) // Time
                             .header(20.0, |mut header| {
                                 header.col(|ui| {
