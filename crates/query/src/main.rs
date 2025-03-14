@@ -775,7 +775,7 @@ impl eframe::App for IctResultApp {
             });
         });
 
-        if self.station == "FW" {
+        if self.station == "FW" && self.mode == AppMode::Board {
             egui::TopBottomPanel::bottom("FW_bot_panel").exact_height(200.0).show(ctx, |ui| {
                 match self.panel.lock().unwrap().is_selected_ok(&self.station) {
                     PanelResult::Ok => {
@@ -785,7 +785,7 @@ impl eframe::App for IctResultApp {
                     },
                     PanelResult::Warning(message) => {
                         ui.centered_and_justified(|ui| {
-                            ui.label(RichText::new("NOK").color(Color32::YELLOW).size(100.0));
+                            ui.label(RichText::new("NOK").color(Color32::ORANGE).size(100.0));
                         } );
                     },
                     PanelResult::Nok(message) => {
