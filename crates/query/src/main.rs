@@ -83,8 +83,6 @@ async fn main() -> anyhow::Result<()> {
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
 
-
-
     let log_reader = config.get_log_reader().to_string();
     let starting_serial = if args.len() >= 2 {
         args[1].clone()
@@ -98,7 +96,10 @@ async fn main() -> anyhow::Result<()> {
     // Start egui
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size(egui::Vec2 { x: 550.0, y: window_height })
+            .with_inner_size(egui::Vec2 {
+                x: 550.0,
+                y: window_height,
+            })
             .with_icon(load_icon()),
         ..Default::default()
     };
@@ -137,7 +138,7 @@ struct Panel {
 enum PanelResult {
     Ok,
     Nok(String),
-    None
+    None,
 }
 
 impl Panel {
@@ -167,7 +168,7 @@ impl Panel {
                 let aoi_res = board.get_aoi_result();
                 let ccl_res = board.get_coating_result();
 
-                if aoi_res.0.is_some_and( |f | !f ) || aoi_res.1.is_some_and( |f | !f )  {
+                if aoi_res.0.is_some_and(|f| !f) || aoi_res.1.is_some_and(|f| !f) {
                     return PanelResult::Nok("Bukott AOI-on!".to_string());
                 } else if ict_res.is_none() {
                     return PanelResult::Nok("Nincs ICT eredménye!".to_string());
@@ -177,18 +178,16 @@ impl Panel {
                     return PanelResult::Nok("Nincs AOI eredménye!".to_string());
                 } else if ccl_res.0.is_none() || ccl_res.1.is_none() {
                     return PanelResult::Nok("Nincs lakkozás eredménye!".to_string());
-                } else if ccl_res.0.is_some_and( |f | !f ) || ccl_res.1.is_some_and( |f | !f )  {
+                } else if ccl_res.0.is_some_and(|f| !f) || ccl_res.1.is_some_and(|f| !f) {
                     return PanelResult::Nok("Bukott lakkozáson!".to_string());
                 }
-                
-                    
+
                 return PanelResult::Ok;
             }
         }
 
-
         PanelResult::None
-    } 
+    }
 
     fn selected_pos(&self, i: usize) -> bool {
         self.selected_pos == i
@@ -343,7 +342,7 @@ impl Board {
     fn get_ict_result(&self) -> Option<bool> {
         for result in &self.results {
             if result.Station.starts_with("ICT") {
-                return Some(result.Result)
+                return Some(result.Result);
             }
         }
 
@@ -438,7 +437,12 @@ struct IctResultApp {
 }
 
 impl IctResultApp {
-    fn default(client: Client<Compat<TcpStream>>, station: String, log_viewer: String, DMC_input: String) -> Self {
+    fn default(
+        client: Client<Compat<TcpStream>>,
+        station: String,
+        log_viewer: String,
+        DMC_input: String,
+    ) -> Self {
         let scan_instantly = !DMC_input.is_empty();
 
         IctResultApp {
@@ -711,13 +715,10 @@ impl IctResultApp {
                                     "HARAN"
                                 };
 
-                                let side = program[program.len()-3..].to_string();
-                                let line_number = &station[station.len()-2..];
-
+                                let side = program[program.len() - 3..].to_string();
+                                let line_number = &station[station.len() - 2..];
 
                                 let station = format!("{sub_station} - L{line_number} - {side}");
-                                
-
 
                                 panel_lock.lock().unwrap().push(
                                     serial,
@@ -798,23 +799,25 @@ impl eframe::App for IctResultApp {
         });
 
         if self.station == "FW" && self.mode == AppMode::Board {
-            egui::TopBottomPanel::bottom("FW_bot_panel").exact_height(200.0).show(ctx, |ui| {
-                ui.add_space(10.0);
-                match self.panel.lock().unwrap().is_selected_ok(&self.station) {
-                    PanelResult::Ok => {
-                        ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("OK").color(Color32::GREEN).size(100.0));
-                        } );
-                    },
-                    PanelResult::Nok(message) => {
-                        ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("NOK").color(Color32::RED).size(100.0));
-                            ui.label(RichText::new(&message).color(Color32::RED).size(30.0));
-                        } );
-                    },
-                    PanelResult::None => {},
-                } 
-            });
+            egui::TopBottomPanel::bottom("FW_bot_panel")
+                .exact_height(200.0)
+                .show(ctx, |ui| {
+                    ui.add_space(10.0);
+                    match self.panel.lock().unwrap().is_selected_ok(&self.station) {
+                        PanelResult::Ok => {
+                            ui.vertical_centered(|ui| {
+                                ui.label(RichText::new("OK").color(Color32::GREEN).size(100.0));
+                            });
+                        }
+                        PanelResult::Nok(message) => {
+                            ui.vertical_centered(|ui| {
+                                ui.label(RichText::new("NOK").color(Color32::RED).size(100.0));
+                                ui.label(RichText::new(&message).color(Color32::RED).size(30.0));
+                            });
+                        }
+                        PanelResult::None => {}
+                    }
+                });
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
