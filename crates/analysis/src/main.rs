@@ -561,15 +561,16 @@ impl MyApp {
         let px_lock = self.progress_x.clone();
         let frame = ctx.clone();
 
-        let product = self.product_list.get(self.selected_product).map(|f| f.clone() );
+        let product = self.product_list.get(self.selected_product).cloned();
 
         thread::spawn(move || {
             let logs_result = match mode {
                 LoadMode::Folder(_) => get_logs_in_path(&input_path, pm_lock.clone()),
                 LoadMode::ProductList(_) => {
                     if let Some(p) = product {
-                        get_logs_for_timeframe(&product, start_dt, end_dt)
+                        get_logs_for_timeframe(&p, start_dt, end_dt)
                     } else {
+                        error!("LoadMode is ProductList, but the selected product is invalid! (Empty list?)");
                         Ok(Vec::new())
                     }    
                 }

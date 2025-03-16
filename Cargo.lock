@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "ICT_utils"
-version = "2.10.5"
+version = "2.10.6"
 dependencies = [
  "ICT_auth",
  "ICT_config",

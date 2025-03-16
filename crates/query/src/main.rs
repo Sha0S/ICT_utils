@@ -137,7 +137,6 @@ struct Panel {
 enum PanelResult {
     Ok,
     Nok(String),
-    Warning(String),
     None
 }
 
@@ -166,18 +165,24 @@ impl Panel {
             if let Some(board) = self.boards.get(self.selected_pos) {
                 let ict_res = board.get_ict_result();
                 let aoi_res = board.get_aoi_result();
+                let ccl_res = board.get_coating_result();
 
                 if aoi_res.0.is_some_and( |f | !f ) || aoi_res.1.is_some_and( |f | !f )  {
                     return PanelResult::Nok("Bukott AOI-on!".to_string());
                 } else if ict_res.is_none() {
                     return PanelResult::Nok("Nincs ICT eredménye!".to_string());
-                } if ict_res.is_some_and(|f| !f) {
+                } else if ict_res.is_some_and(|f| !f) {
                     return PanelResult::Nok("Bukott ICT-n!".to_string());
                 } else if aoi_res.0.is_none() || aoi_res.1.is_none() {
-                    return PanelResult::Warning("Nincs AOI eredménye!".to_string());
-                } else {
-                    return PanelResult::Ok;
+                    return PanelResult::Nok("Nincs AOI eredménye!".to_string());
+                } else if ccl_res.0.is_none() || ccl_res.1.is_none() {
+                    return PanelResult::Nok("Nincs lakkozás eredménye!".to_string());
+                } else if ccl_res.0.is_some_and( |f | !f ) || ccl_res.1.is_some_and( |f | !f )  {
+                    return PanelResult::Nok("Bukott lakkozáson!".to_string());
                 }
+                
+                    
+                return PanelResult::Ok;
             }
         }
 
@@ -351,6 +356,23 @@ impl Board {
 
         for result in &self.results {
             if result.Station.starts_with("AOI") || result.Station.starts_with("HARAN") {
+                if result.Station.ends_with("TOP") && top.is_none() {
+                    top = Some(result.Result);
+                } else if result.Station.ends_with("BOT") && bot.is_none() {
+                    bot = Some(result.Result);
+                }
+            }
+        }
+
+        (bot, top)
+    }
+
+    fn get_coating_result(&self) -> (Option<bool>, Option<bool>) {
+        let mut top = None;
+        let mut bot = None;
+
+        for result in &self.results {
+            if result.Station.starts_with("CCL") {
                 if result.Station.ends_with("TOP") && top.is_none() {
                     top = Some(result.Result);
                 } else if result.Station.ends_with("BOT") && bot.is_none() {
@@ -777,16 +799,11 @@ impl eframe::App for IctResultApp {
 
         if self.station == "FW" && self.mode == AppMode::Board {
             egui::TopBottomPanel::bottom("FW_bot_panel").exact_height(200.0).show(ctx, |ui| {
+                ui.add_space(10.0);
                 match self.panel.lock().unwrap().is_selected_ok(&self.station) {
                     PanelResult::Ok => {
                         ui.vertical_centered(|ui| {
                             ui.label(RichText::new("OK").color(Color32::GREEN).size(100.0));
-                        } );
-                    },
-                    PanelResult::Warning(message) => {
-                        ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("NOK").color(Color32::ORANGE).size(100.0));
-                            ui.label(RichText::new(&message).color(Color32::ORANGE).size(30.0));
                         } );
                     },
                     PanelResult::Nok(message) => {
