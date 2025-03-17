@@ -238,7 +238,7 @@ impl Panel {
             .iter_mut()
             .find(|f| f.Serial_NMBR == Serial_NMBR)
         {
-            board.push(Station, Result, Date_Time, Log_File_Name, Notes)
+            board.push(Station, station_type, Result, Date_Time, Log_File_Name, Notes)
         } else {
             self.boards.push(Board::new(
                 Serial_NMBR,
