@@ -345,7 +345,7 @@ impl Board {
 
     fn get_ict_result(&self) -> Option<bool> {
         for result in &self.results {
-            if result.Station.starts_with("ICT") {
+            if result.station_type == StationType::ICT {
                 return Some(result.Result);
             }
         }
