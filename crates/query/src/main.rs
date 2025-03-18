@@ -368,7 +368,7 @@ impl Board {
             if let StationType::Aoi(side) = result.station_type {
                 if side == BotTop::Top && top.is_none() {
                     top = Some(result.Result);
-                } else if bot.is_none() {
+                } else if side == BotTop::Bot && bot.is_none() {
                     bot = Some(result.Result);
                 }
             }
