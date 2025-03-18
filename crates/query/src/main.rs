@@ -227,7 +227,7 @@ impl Panel {
         &mut self,
         Serial_NMBR: String,
         Station: String,
-        station_type: StationType
+        station_type: StationType,
         Result: bool,
         Date_Time: NaiveDateTime,
         Log_File_Name: String,
@@ -238,7 +238,14 @@ impl Panel {
             .iter_mut()
             .find(|f| f.Serial_NMBR == Serial_NMBR)
         {
-            board.push(Station, station_type, Result, Date_Time, Log_File_Name, Notes)
+            board.push(
+                Station,
+                station_type,
+                Result,
+                Date_Time,
+                Log_File_Name,
+                Notes,
+            )
         } else {
             self.boards.push(Board::new(
                 Serial_NMBR,
@@ -331,7 +338,7 @@ impl Board {
     ) -> Board {
         let results = vec![TestResult {
             Station,
-            station_type
+            station_type,
             Result,
             Date_Time,
             Log_File_Name,
@@ -345,7 +352,7 @@ impl Board {
 
     fn get_ict_result(&self) -> Option<bool> {
         for result in &self.results {
-            if result.station_type == StationType::ICT {
+            if result.station_type == StationType::Ict {
                 return Some(result.Result);
             }
         }
@@ -358,8 +365,8 @@ impl Board {
         let mut bot = None;
 
         for result in &self.results {
-            if let StationType::AOI(side) = result.station_type  {
-                if side == BotTop::TOP && top.is_none() {
+            if let StationType::Aoi(side) = result.station_type {
+                if side == BotTop::Top && top.is_none() {
                     top = Some(result.Result);
                 } else if bot.is_none() {
                     bot = Some(result.Result);
@@ -375,8 +382,8 @@ impl Board {
         let mut bot = None;
 
         for result in &self.results {
-            if let StationType::CCL(side) = result.station_type {
-                if side == BotTop::TOP && top.is_none() {
+            if let StationType::Ccl(side) = result.station_type {
+                if side == BotTop::Top && top.is_none() {
                     top = Some(result.Result);
                 } else if bot.is_none() {
                     bot = Some(result.Result);
@@ -414,16 +421,16 @@ impl Board {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BotTop {
-    BOT,
-    TOP
+    Bot,
+    Top,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum StationType {
-    AOI(BotTop),
-    ICT,
-    FCT,
-    CCL(BotTop)
+    Aoi(BotTop),
+    Ict,
+    Fct,
+    Ccl(BotTop),
 }
 
 struct TestResult {
@@ -602,7 +609,7 @@ impl IctResultApp {
                             panel_lock.lock().unwrap().push(
                                 serial,
                                 station,
-                                StationType::ICT,
+                                StationType::Ict,
                                 result == "Passed",
                                 date_time,
                                 log_file_name,
@@ -653,7 +660,11 @@ impl IctResultApp {
                             panel_lock.lock().unwrap().push(
                                 serial,
                                 station_str,
-                                StationType::CCL( if side == "BOT" {BotTop::BOT} else {BotTop::TOP} ),
+                                StationType::Ccl(if side == "BOT" {
+                                    BotTop::Bot
+                                } else {
+                                    BotTop::Top
+                                }),
                                 result == "PASS",
                                 date_time,
                                 "".to_string(),
@@ -698,7 +709,7 @@ impl IctResultApp {
                             panel_lock.lock().unwrap().push(
                                 serial,
                                 station,
-                                StationType::FCT,
+                                StationType::Fct,
                                 result == "Passed",
                                 date_time,
                                 String::new(),
@@ -747,7 +758,11 @@ impl IctResultApp {
                                 panel_lock.lock().unwrap().push(
                                     serial,
                                     station,
-                                    StationType::AOI( if side == "BOT" {BotTop::BOT} else {BotTop::TOP} ),
+                                    StationType::Aoi(if side == "BOT" {
+                                        BotTop::Bot
+                                    } else {
+                                        BotTop::Top
+                                    }),
                                     result == "Pass",
                                     date_time,
                                     String::new(),
