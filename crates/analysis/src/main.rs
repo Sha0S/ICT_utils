@@ -360,7 +360,7 @@ impl AutoUpdate {
         let mut new_logs: usize = 0;
 
         for log in self.log_buffer.read().unwrap().iter() {
-            if lfh.write().unwrap().push_from_file(&log.0) {
+            if lfh.write().unwrap().push_panel_from_file(&log.0) {
                 new_logs += 1;
             }
         }
@@ -584,7 +584,7 @@ impl MyApp {
                 println!("Found {} logs to load.", logs.len());
 
                 for log in logs.iter().rev() {
-                    (*lb_lock.write().unwrap()).push_from_file(&log.0);
+                    (*lb_lock.write().unwrap()).push_panel_from_file(&log.0);
                     *px_lock.write().unwrap() += 1;
                     frame.request_repaint_after(std::time::Duration::from_millis(500));
                 }
