@@ -2444,7 +2444,7 @@ impl LogFileHandler {
     pub fn push_from_file(&mut self, p: &Path) -> bool {
         let source = p.as_os_str().to_owned();
         if self.sourcelist.contains(&source) {
-            debug!("\t\tW: Logfile already loaded!");
+            debug!("Logfile already loaded!");
             return false;
         }
 
@@ -2461,13 +2461,12 @@ impl LogFileHandler {
     pub fn push_panel_from_file(&mut self, p: &Path) -> bool {
         let source = p.as_os_str().to_owned();
         if self.sourcelist.contains(&source) {
-            debug!("\t\tW: Logfile already loaded!");
+            debug!("Logfile already loaded!");
             return false;
         }
 
         self.sourcelist.insert(source.clone());
 
-        //println!("INFO: Pushing file {} into log-stack", p.display());
         if let Ok(logs) = LogFile::load_panel(p) {
             let mut all_ok = true;
             for log in logs {
@@ -2479,6 +2478,17 @@ impl LogFileHandler {
             all_ok
         } else {
             error!("Failed to load panel from log: {:?}", p);
+            
+
+            // Try using the old implementation
+            if let Ok(log) = LogFile::load(p) {
+                error!("Load succesfull using the older implementation.");
+                return self.push(log);
+            } else {
+                error!("Load failed using the older implementation too.");
+            }
+
+
             false
         }
     }
@@ -2515,7 +2525,7 @@ impl LogFileHandler {
             // Mismatched types are not supported. (And ATM I see no reason to do that.)
             if self.product_id != log.product_id {
                 error!(
-                    "Product type mismatch detected! {} =/= {} \t {:?}",
+                    "Product type mismatch detected! {} =/= {}, {:?}",
                     self.product_id, log.product_id, log.source
                 );
                 return false;
