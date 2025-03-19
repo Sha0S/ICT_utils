@@ -8,7 +8,7 @@ use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
-use log::error;
+use log::{debug, error, info, trace, warn};
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
 mod keysight_log;
@@ -421,15 +421,24 @@ impl LogFile {
         }
     }
 
+    pub fn load_panel(p: &Path) -> io::Result<Vec<Self>> {
+        if p.extension().is_some_and(|f| f == "csv") {
+            let ret = LogFile::load_FCT(p);
+            ret.map(|f| vec![f])
+        } else {
+            LogFile::load_ICT_panel(p)
+        }
+    }
+
     pub fn load_FCT(p: &Path) -> io::Result<Self> {
-        println!("INFO: Loading FCT file {}", p.display());
+        info!("Loading FCT file {}", p.display());
         let source = p.as_os_str().to_owned();
 
         let file_ANSI = std::fs::read(p)?;
         let decoded = encoding_rs::WINDOWS_1252.decode(&file_ANSI);
 
         if decoded.2 {
-            println!("ERROR: Conversion had errors");
+            error!("Conversion had errors");
         }
 
         let lines = decoded.0.lines();
@@ -474,7 +483,7 @@ impl LogFile {
                         time_start = Some(time);
                         time_start_u64 = time_to_u64(time);
                     } else {
-                        println!("Time conversion error!");
+                        error!("Time conversion error!");
                     }
                 }
                 "Testing time(sec)" => {
@@ -496,7 +505,7 @@ impl LogFile {
                 }
                 _ => {
                     if tokens.len() != 6 {
-                        println!("Tokens: {tokens:?}");
+                        debug!("Tokens: {tokens:?}");
                         continue;
                     }
                     if tokens[0] == "StepName" || tokens[5] == "Info" {
@@ -622,7 +631,7 @@ impl LogFile {
     pub fn load_ICT_panel(p: &Path) -> io::Result<Vec<Self>> {
        debug!("Loading file: {:?}", p);
 
-       let ret = Vec::new();
+       let mut ret = Vec::new();
        let source = p.as_os_str().to_owned();
 
        let tree = keysight_log::parse_file(p)?;
@@ -639,13 +648,13 @@ impl LogFile {
     // We assume that the logfile is not missing any on the BATCH/BTEST fields
     fn load_ICT_board(batch_node: &keysight_log::TreeNode, source: &OsString) -> Option<Self> {
 
-        let mut product_id = String::from("NoID");
-        let mut DMC = String::from("NoDMC");
-        let mut DMC_mb = String::from("NoMB");
-        let mut index = 1;
-        let mut time_start: u64 = 0;
-        let mut time_end: u64 = 0;
-        let mut status = 0;
+        let product_id;
+        let DMC;
+        let DMC_mb;
+        let  index;
+        let  time_start: u64;
+        let  time_end: u64;
+        let  status;
 
         let mut tests: Vec<Test> = Vec::new();
         let mut report: Vec<String> = Vec::new();
@@ -727,7 +736,6 @@ impl LogFile {
             time_start = *t_start;
             time_end = *t_end;
             index = *b_index as usize;
-            btest_node = Some(btest);
         } else {
             error!("Node is not a Btest node!");
             return None;
@@ -747,8 +755,8 @@ impl LogFile {
                                     TLimit::Lim3(nom, max, min)
                                 }
                                 _ => {
-                                    eprintln!(
-                                        "ERR: Analog test limit parsing error!\n\t{:?}",
+                                    error!(
+                                        "Analog test limit parsing error! {:?}",
                                         lim.data
                                     );
                                     TLimit::None
@@ -763,7 +771,7 @@ impl LogFile {
                                     report.push(rpt.clone());
                                 }
                                 _ => {
-                                    eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                    debug!("Unhandled subfield! {:?}", subfield.data)
                                 }
                             }
                         }
@@ -775,8 +783,8 @@ impl LogFile {
                             limits,
                         })
                     } else {
-                        eprintln!(
-                            "ERR: Analog test outside of a BLOCK and without name!\n\t{:?}",
+                        error!(
+                            "Analog test outside of a BLOCK and without name! {:?}",
                             test.data
                         );
                     }
@@ -806,8 +814,8 @@ impl LogFile {
                                             TLimit::Lim3(nom, max, min)
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Analog test limit parsing error!\n\t{:?}",
+                                            error!(
+                                                "Analog test limit parsing error! {:?}",
                                                 lim.data
                                             );
                                             TLimit::None
@@ -822,8 +830,8 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -851,8 +859,8 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -885,8 +893,8 @@ impl LogFile {
                                             failed_nodes.append(&mut tmp);
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -910,8 +918,8 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -936,14 +944,14 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             keysight_log::KeysightPrefix::UserDefined(s) => {
-                                eprintln!("ERR: Not implemented USER DEFINED block!\n\t{:?}", s);
+                                warn!("Not implemented USER DEFINED block! {:?}", s);
                             }
                             keysight_log::KeysightPrefix::Error(s) => {
-                                eprintln!("ERR: KeysightPrefix::Error found!\n\t{:?}", s);
+                                error!("KeysightPrefix::Error found! {:?}", s);
                             }
                             _ => {
-                                eprintln!(
-                                    "ERR: Found a invalid field nested in BLOCK!\n\t{:?}",
+                                warn!(
+                                    "Found a invalid field nested in BLOCK! {:?}",
                                     sub_test.data
                                 );
                             }
@@ -961,7 +969,7 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -987,7 +995,7 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1010,7 +1018,7 @@ impl LogFile {
                                 failed_pins.append(&mut pin.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1030,7 +1038,7 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1067,7 +1075,7 @@ impl LogFile {
                                             failed_nodes.append(&mut tmp);
                                         }
                                         _ => {
-                                            eprintln!("ERR: Unhandled subfield!\n\t{:?}", sub2.data)
+                                            debug!("Unhandled subfield! {:?}", sub2.data)
                                         }
                                     }
                                 }
@@ -1082,13 +1090,13 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!("ERR: Unhandled subfield!\n\t{:?}", sub2.data)
+                                            debug!("Unhandled subfield! {:?}", sub2.data)
                                         }
                                     }
                                 }
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1103,7 +1111,7 @@ impl LogFile {
                 keysight_log::KeysightPrefix::UserDefined(s) => match s[0].as_str() {
                     "@Programming_time" => {
                         if s.len() < 2 {
-                            eprintln!("ERR: Parsing error at @Programming_time!\n\t{:?}", s);
+                            error!("Parsing error at @Programming_time! {:?}", s);
                             continue;
                         }
 
@@ -1116,15 +1124,15 @@ impl LogFile {
                                     limits: TLimit::None,
                                 })
                             } else {
-                                eprintln!("ERR: Parsing error at @Programming_time!\n\t{:?}", s);
+                                error!("Parsing error at @Programming_time! {:?}", s);
                             }
                         } else {
-                            eprintln!("ERR: Parsing error at @Programming_time!\n\t{:?}", s);
+                            error!("Parsing error at @Programming_time! {:?}", s);
                         }
                     }
                     "@PS_info" => {
                         if s.len() < 3 {
-                            eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                            error!("Parsing error at @PS_info! {:?}", s);
                             continue;
                         }
 
@@ -1135,11 +1143,11 @@ impl LogFile {
                             if let Ok(ts) = t.parse::<f32>() {
                                 voltage = ts;
                             } else {
-                                eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                                error!("Parsing error at @PS_info! {:?}", s);
                                 continue;
                             }
                         } else {
-                            eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                            error!("Parsing error at @PS_info! {:?}", s);
                             continue;
                         }
 
@@ -1147,15 +1155,15 @@ impl LogFile {
                             if let Ok(ts) = t.parse::<f32>() {
                                 current = ts;
                             } else {
-                                eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                                error!("Parsing error at @PS_info! {:?}", s);
                                 continue;
                             }
                         } else {
-                            eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                            error!("Parsing error at @PS_info! {:?}", s);
                             continue;
                         }
 
-                        println!("{} - {}", voltage, current);
+                        debug!("{} - {}", voltage, current);
                         PS_counter += 1;
                         tests.push(Test {
                             name: format!("PS_Info_{PS_counter}%Voltage"),
@@ -1176,15 +1184,15 @@ impl LogFile {
                         }
                     }
                     _ => {
-                        eprintln!("ERR: Not implemented USER DEFINED block!\n\t{:?}", s);
+                        warn!("Not implemented USER DEFINED block! {:?}", s);
                     }
                 },
                 keysight_log::KeysightPrefix::Error(s) => {
-                    eprintln!("ERR: KeysightPrefix::Error found!\n\t{:?}", s);
+                    error!("KeysightPrefix::Error found! {:?}", s);
                 }
                 _ => {
-                    eprintln!(
-                        "ERR: Found a invalid field nested in BTEST!\n\t{:?}",
+                    warn!(
+                        "Found a invalid field nested in BTEST! {:?}",
                         test.data
                     );
                 }
@@ -1206,18 +1214,8 @@ impl LogFile {
             });
         }
 
-        if time_start == 0 {
-            if let Ok(x) = p.metadata() {
-                time_start = local_time_to_u64(x.modified().unwrap().into());
-            }
-        }
-
-        if time_end == 0 {
-            time_end = time_start;
-        }
-
         Some(LogFile {
-            source,
+            source: source.clone(),
             DMC,
             DMC_mb,
             product_id,
@@ -1236,7 +1234,7 @@ impl LogFile {
     }
 
     pub fn load_ICT(p: &Path) -> io::Result<Self> {
-        println!("INFO: Loading (v2) file {}", p.display());
+        info!("INFO: Loading (v2) file {}", p.display());
         let source = p.as_os_str().to_owned();
 
         let mut product_id = String::from("NoID");
@@ -1296,7 +1294,7 @@ impl LogFile {
                 //revision_id = r_id.clone();
                 batch_node = Some(batch);
             } else {
-                eprintln!("W: No BATCH field found!");
+                warn!("No BATCH field found!");
             }
         }
 
@@ -1339,7 +1337,7 @@ impl LogFile {
                 index = *b_index as usize;
                 btest_node = Some(btest);
             } else {
-                eprintln!("W: No BTEST field found!");
+                warn!("No BTEST field found!");
             }
         }
 
@@ -1363,8 +1361,8 @@ impl LogFile {
                                     TLimit::Lim3(nom, max, min)
                                 }
                                 _ => {
-                                    eprintln!(
-                                        "ERR: Analog test limit parsing error!\n\t{:?}",
+                                    error!(
+                                        "Analog test limit parsing error! {:?}",
                                         lim.data
                                     );
                                     TLimit::None
@@ -1379,7 +1377,7 @@ impl LogFile {
                                     report.push(rpt.clone());
                                 }
                                 _ => {
-                                    eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                    debug!("Unhandled subfield! {:?}", subfield.data)
                                 }
                             }
                         }
@@ -1391,8 +1389,8 @@ impl LogFile {
                             limits,
                         })
                     } else {
-                        eprintln!(
-                            "ERR: Analog test outside of a BLOCK and without name!\n\t{:?}",
+                        error!(
+                            "Analog test outside of a BLOCK and without name! {:?}",
                             test.data
                         );
                     }
@@ -1422,8 +1420,8 @@ impl LogFile {
                                             TLimit::Lim3(nom, max, min)
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Analog test limit parsing error!\n\t{:?}",
+                                            error!(
+                                                "Analog test limit parsing error! {:?}",
                                                 lim.data
                                             );
                                             TLimit::None
@@ -1438,8 +1436,8 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -1467,8 +1465,8 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -1501,8 +1499,8 @@ impl LogFile {
                                             failed_nodes.append(&mut tmp);
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -1526,8 +1524,8 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!(
-                                                "ERR: Unhandled subfield!\n\t{:?}",
+                                            debug!(
+                                                "Unhandled subfield! {:?}",
                                                 subfield.data
                                             )
                                         }
@@ -1552,14 +1550,14 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             keysight_log::KeysightPrefix::UserDefined(s) => {
-                                eprintln!("ERR: Not implemented USER DEFINED block!\n\t{:?}", s);
+                                debug!("Not implemented USER DEFINED block! {:?}", s);
                             }
                             keysight_log::KeysightPrefix::Error(s) => {
-                                eprintln!("ERR: KeysightPrefix::Error found!\n\t{:?}", s);
+                                error!("KeysightPrefix::Error found! {:?}", s);
                             }
                             _ => {
-                                eprintln!(
-                                    "ERR: Found a invalid field nested in BLOCK!\n\t{:?}",
+                                error!(
+                                    "Found a invalid field nested in BLOCK! {:?}",
                                     sub_test.data
                                 );
                             }
@@ -1577,7 +1575,7 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1603,7 +1601,7 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1626,7 +1624,7 @@ impl LogFile {
                                 failed_pins.append(&mut pin.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1646,7 +1644,7 @@ impl LogFile {
                                 report.push(rpt.clone());
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1683,7 +1681,7 @@ impl LogFile {
                                             failed_nodes.append(&mut tmp);
                                         }
                                         _ => {
-                                            eprintln!("ERR: Unhandled subfield!\n\t{:?}", sub2.data)
+                                            debug!("Unhandled subfield! {:?}", sub2.data)
                                         }
                                     }
                                 }
@@ -1698,13 +1696,13 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            eprintln!("ERR: Unhandled subfield!\n\t{:?}", sub2.data)
+                                            debug!("Unhandled subfield! {:?}", sub2.data)
                                         }
                                     }
                                 }
                             }
                             _ => {
-                                eprintln!("ERR: Unhandled subfield!\n\t{:?}", subfield.data)
+                                debug!("Unhandled subfield! {:?}", subfield.data)
                             }
                         }
                     }
@@ -1719,7 +1717,7 @@ impl LogFile {
                 keysight_log::KeysightPrefix::UserDefined(s) => match s[0].as_str() {
                     "@Programming_time" => {
                         if s.len() < 2 {
-                            eprintln!("ERR: Parsing error at @Programming_time!\n\t{:?}", s);
+                            error!("Parsing error at @Programming_time! {:?}", s);
                             continue;
                         }
 
@@ -1732,15 +1730,15 @@ impl LogFile {
                                     limits: TLimit::None,
                                 })
                             } else {
-                                eprintln!("ERR: Parsing error at @Programming_time!\n\t{:?}", s);
+                                error!("Parsing error at @Programming_time! {:?}", s);
                             }
                         } else {
-                            eprintln!("ERR: Parsing error at @Programming_time!\n\t{:?}", s);
+                            error!("Parsing error at @Programming_time! {:?}", s);
                         }
                     }
                     "@PS_info" => {
                         if s.len() < 3 {
-                            eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                            error!("Parsing error at @PS_info! {:?}", s);
                             continue;
                         }
 
@@ -1751,11 +1749,11 @@ impl LogFile {
                             if let Ok(ts) = t.parse::<f32>() {
                                 voltage = ts;
                             } else {
-                                eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                                error!("Parsing error at @PS_info! {:?}", s);
                                 continue;
                             }
                         } else {
-                            eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                            error!("Parsing error at @PS_info! {:?}", s);
                             continue;
                         }
 
@@ -1763,15 +1761,15 @@ impl LogFile {
                             if let Ok(ts) = t.parse::<f32>() {
                                 current = ts;
                             } else {
-                                eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                                error!("Parsing error at @PS_info! {:?}", s);
                                 continue;
                             }
                         } else {
-                            eprintln!("ERR: Parsing error at @PS_info!\n\t{:?}", s);
+                            error!("Parsing error at @PS_info! {:?}", s);
                             continue;
                         }
 
-                        println!("{} - {}", voltage, current);
+                        debug!("{} - {}", voltage, current);
                         PS_counter += 1;
                         tests.push(Test {
                             name: format!("PS_Info_{PS_counter}%Voltage"),
@@ -1792,15 +1790,15 @@ impl LogFile {
                         }
                     }
                     _ => {
-                        eprintln!("ERR: Not implemented USER DEFINED block!\n\t{:?}", s);
+                        debug!("Not implemented USER DEFINED block! {:?}", s);
                     }
                 },
                 keysight_log::KeysightPrefix::Error(s) => {
-                    eprintln!("ERR: KeysightPrefix::Error found!\n\t{:?}", s);
+                    error!("KeysightPrefix::Error found! {:?}", s);
                 }
                 _ => {
-                    eprintln!(
-                        "ERR: Found a invalid field nested in BTEST!\n\t{:?}",
+                    error!(
+                        "Found a invalid field nested in BTEST! {:?}",
                         test.data
                     );
                 }
@@ -2444,6 +2442,14 @@ impl LogFileHandler {
     }
 
     pub fn push_from_file(&mut self, p: &Path) -> bool {
+        let source = p.as_os_str().to_owned();
+        if self.sourcelist.contains(&source) {
+            debug!("\t\tW: Logfile already loaded!");
+            return false;
+        }
+
+        self.sourcelist.insert(source.clone());
+
         //println!("INFO: Pushing file {} into log-stack", p.display());
         if let Ok(log) = LogFile::load(p) {
             self.push(log)
@@ -2452,18 +2458,36 @@ impl LogFileHandler {
         }
     }
 
-    pub fn push(&mut self, mut log: LogFile) -> bool {
-        println!("\tProcessing logfile: {:?}", log.source);
-
-        if self.sourcelist.contains(&log.source) {
-            println!("\t\tW: Logfile already loaded!");
+    pub fn push_panel_from_file(&mut self, p: &Path) -> bool {
+        let source = p.as_os_str().to_owned();
+        if self.sourcelist.contains(&source) {
+            debug!("\t\tW: Logfile already loaded!");
             return false;
         }
 
-        self.sourcelist.insert(log.source.clone());
+        self.sourcelist.insert(source.clone());
+
+        //println!("INFO: Pushing file {} into log-stack", p.display());
+        if let Ok(logs) = LogFile::load_panel(p) {
+            let mut all_ok = true;
+            for log in logs {
+                if !self.push(log) {
+                    all_ok = false;
+                }
+            }
+
+            all_ok
+        } else {
+            error!("Failed to load panel from log: {:?}", p);
+            false
+        }
+    }
+
+    fn push(&mut self, mut log: LogFile) -> bool {
+        debug!("Processing logfile: {:?}", log.source);
 
         if self.product_id.is_empty() {
-            println!("\t\tINFO: Initializing as {}", log.product_id);
+            info!("INFO: Initializing as {}", log.product_id);
             self.product_id = log.product_id.to_owned();
 
             if let Some(product) = get_product_for_serial(ICT_config::PRODUCT_LIST, &log.DMC_mb) {
@@ -2471,8 +2495,8 @@ impl LogFileHandler {
                 self.product = Some(product);
             }
 
-            println!("\t\t\tProduct is: {:?}", self.product);
-            println!("\t\t\tGolden samples: {:?}", self.golden_samples);
+            debug!("Product is: {:?}", self.product);
+            debug!("Golden samples: {:?}", self.golden_samples);
 
             // Create testlist
             for t in log.tests.iter() {
@@ -2490,8 +2514,8 @@ impl LogFileHandler {
             // Check if it is for the same type.
             // Mismatched types are not supported. (And ATM I see no reason to do that.)
             if self.product_id != log.product_id {
-                println!(
-                    "\t\tERR: Product type mismatch detected! {} =/= {}\n\t\t {:?}",
+                error!(
+                    "Product type mismatch detected! {} =/= {} \t {:?}",
                     self.product_id, log.product_id, log.source
                 );
                 return false;
@@ -2505,8 +2529,8 @@ impl LogFileHandler {
             // If the testlist is missing any entries, add them
             for test in &log.tests {
                 if !self.testlist.iter().any(|e| e.0 == test.name) {
-                    println!(
-                        "\t\tW: Test {} was missing from testlist. Adding.",
+                    debug!(
+                        "Test {} was missing from testlist. Adding.",
                         test.name
                     );
                     self.testlist.push((test.name.clone(), test.ttype));
@@ -2534,8 +2558,8 @@ impl LogFileHandler {
                 if self.testlist[i].0 != log.tests[i].name {
                     if !log.tests[i].name.is_empty() {
                         q += 1;
-                        println!(
-                            "\t\tW: Test mismatch: {} =/= {}",
+                        trace!(
+                            "Test mismatch: {} =/= {}",
                             self.testlist[i].0, log.tests[i].name
                         );
                     }
@@ -2544,8 +2568,8 @@ impl LogFileHandler {
             }
 
             if q > 0 {
-                print!(
-                    "\t\tFound {} ({}) mismatches, re-ordering... ",
+                debug!(
+                    "Found {} ({}) mismatches, re-ordering... ",
                     q,
                     buffer_i.len()
                 );
@@ -2563,7 +2587,7 @@ impl LogFileHandler {
                     }
                 }
 
-                println!("Done!");
+                debug!("Done!");
             }
 
             // Check if the MultiBoard already exists.
@@ -2587,7 +2611,7 @@ impl LogFileHandler {
     }
 
     pub fn update(&mut self) {
-        println!("INFO: Update started...");
+        debug!("Update started...");
         let mut mbres: Vec<(Yield, Yield, Yield)> = Vec::new();
 
         self.pp_multiboard = 1;
@@ -2637,12 +2661,12 @@ impl LogFileHandler {
             self.sb_total_yield += b.2;
         }
 
-        println!(
-            "INFO: Update done! Result: {:?} - {:?} - {:?}",
+        debug!(
+            "Update done! Result: {:?} - {:?} - {:?}",
             self.sb_first_yield, self.sb_final_yield, self.sb_total_yield
         );
-        println!(
-            "INFO: Update done! Result: {:?} - {:?} - {:?}",
+        debug!(
+            "Update done! Result: {:?} - {:?} - {:?}",
             self.mb_first_yield, self.mb_final_yield, self.mb_total_yield
         );
     }
@@ -2924,8 +2948,8 @@ impl LogFileHandler {
         let mut resultlist: Vec<(u64, usize, TResult, TLimit)> = Vec::new();
 
         if testid > self.testlist.len() {
-            println!(
-                "ERR: Test ID is out of bounds! {} > {}",
+            error!(
+                "Test ID is out of bounds! {} > {}",
                 testid,
                 self.testlist.len()
             );
@@ -2960,7 +2984,7 @@ impl LogFileHandler {
                 TType::Shorts => continue,
                 TType::Testjet => continue,
                 TType::Unknown => {
-                    //println!("ERR: TType::Unknown in the final testlist at #{i}, name {tname}");
+                    //println!("TType::Unknown in the final testlist at #{i}, name {tname}");
                 }
                 _ => {
                     let mut limit: Option<&TLimit> = None;
@@ -2974,8 +2998,8 @@ impl LogFileHandler {
                                     if limit.is_none() {
                                         limit = Some(test)
                                     } else if *limit.unwrap() != *test {
-                                        println!(
-                                            "INFO: Test {tname} has limit changes in the sample"
+                                        debug!(
+                                            "Test {tname} has limit changes in the sample"
                                         );
                                         ret.push((i, tname.clone()));
                                         continue 'outerloop;
@@ -3173,7 +3197,7 @@ impl LogFileHandler {
             }
         }
 
-        println!("Found none as {DMC}");
+        error!("Found none as {DMC}");
         None
     }
 
@@ -3186,7 +3210,7 @@ impl LogFileHandler {
             }
         }
 
-        println!("Found none as {DMC}");
+        error!("Found none as {DMC}");
         None
     }
 
