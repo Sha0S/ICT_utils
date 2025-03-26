@@ -186,6 +186,11 @@ pub struct Config {
     MES_server: String,
     station_name: String,
 
+    AOI_dir: String,
+    AOI_chunks: usize,
+    AOI_tminus: u64,
+    AOI_deltat: u64,
+
     overlay_pos: Option<OverlayPos>,
 }
 
@@ -234,6 +239,32 @@ impl Config {
 
                 if let Some(station) = app.get("STATION") {
                     c.station_name = station.to_owned();
+                }
+            }
+
+            if let Some(app) = config.section(Some("AOI")) {
+                if let Some(dir) = app.get("DIR") {
+                    c.AOI_dir = dir.to_owned();
+                }
+
+
+                if let Some(chunks) = app.get("CHUNKS") {
+                    c.AOI_chunks = chunks.parse().unwrap_or(10);
+                }
+
+                if let Some(chunks) = app.get("TMINUS") {
+                    c.AOI_tminus = chunks.parse().unwrap_or(300);
+                }
+
+                if let Some(chunks) = app.get("DELTA_T") {
+                    c.AOI_deltat = chunks.parse().unwrap_or(600);
+                }
+
+                if c.AOI_dir.is_empty()
+                {
+                    return Err(anyhow::Error::msg(
+                        "ER: Missing [AOI] - [DIR] field from configuration file!",
+                    ));
                 }
             }
 
@@ -302,6 +333,22 @@ impl Config {
 
     pub fn get_station_name(&self) -> &str {
         &self.station_name
+    }
+
+    pub fn get_aoi_dir(&self) -> &str {
+        &self.AOI_dir
+    }
+
+    pub fn get_aoi_chunks(&self) -> usize {
+        self.AOI_chunks
+    }
+
+    pub fn get_aoi_deltat(&self) -> u64 {
+        self.AOI_deltat
+    }
+
+    pub fn get_aoi_tminus(&self) -> u64 {
+        self.AOI_tminus
     }
 
     pub fn get_overlay_pos(&self) -> Option<OverlayPos> {
