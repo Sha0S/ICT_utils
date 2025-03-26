@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "SMT_utils"
-version = "2.11.0"
+version = "2.11.1"
 dependencies = [
  "AOI_log_file",
  "ICT_auth",
@@ -129,12 +129,12 @@ dependencies = [
  "embed-resource",
  "encoding_rs",
  "env_logger",
- "image 0.25.5",
+ "image 0.24.9",
  "log",
  "once_cell",
  "pwhash",
  "rfd",
- "roxmltree 0.20.0",
+ "roxmltree 0.19.0",
  "rust-ini",
  "rust_xlsxwriter",
  "serde",
