@@ -99,7 +99,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ICT_utils"
+name = "SMT_utils"
 version = "2.11.0"
 dependencies = [
  "ICT_auth",

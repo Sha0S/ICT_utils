@@ -1,5 +1,5 @@
 [package]
-name = "ICT_utils"
+name = "SMT_utils"
 version = "2.11.0"
 edition = "2021"
 
