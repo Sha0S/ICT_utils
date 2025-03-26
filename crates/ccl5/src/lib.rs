@@ -38,15 +38,15 @@ TestStatus= PASS
 
 #[derive(Debug, Clone)]
 pub struct Board {
-    log: PathBuf,
+    pub log: PathBuf,
 
-    serial: String,
-    side: String,
-    boards_on_panel: u8,
+    pub serial: String,
+    pub side: String,
+    pub boards_on_panel: u8,
 
-    user: String,
-    date_time: NaiveDateTime,
-    result: String
+    pub user: String,
+    pub date_time: NaiveDateTime,
+    pub result: String
 }
 
 impl Board {
