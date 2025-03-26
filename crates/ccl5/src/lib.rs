@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 
-
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -32,7 +31,7 @@ BoardsPerPanel= 2
  -> Palette_size
 TestStatus= PASS
  -> Result (PASS or FAIL)
- 
+
 + FileName
 */
 
@@ -46,12 +45,12 @@ pub struct Board {
 
     pub user: String,
     pub date_time: NaiveDateTime,
-    pub result: String
+    pub result: String,
 }
 
 impl Board {
-    pub fn load<P: AsRef<Path> + Debug>(path: P) -> anyhow::Result<Board> {
-        let log = PathBuf::from(P);
+    pub fn load<P: AsRef<Path> + std::fmt::Debug>(path: P) -> anyhow::Result<Board> {
+        let log = path.as_ref().to_path_buf();
         let mut serial = String::new();
         let mut side = String::new();
         let mut boards_on_panel = 0;
@@ -59,7 +58,7 @@ impl Board {
         let mut date_time = None;
         let mut result = String::new();
 
-        let mut f = fs::read_to_string(&log)?;
+        let f = fs::read_to_string(&log)?;
         for line in f.lines() {
             if let Some((key, value_raw)) = line.split_once('=') {
                 let value = value_raw.trim();
@@ -73,7 +72,8 @@ impl Board {
                     "LoginUser" => {
                         user = value.to_string();
                     }
-                    "DateTime" => { // 03/26/25 15:14:58
+                    "DateTime" => {
+                        // 03/26/25 15:14:58
                         if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%m/%d/%y %H:%M:%S") {
                             date_time = Some(dt);
                         } else {
@@ -81,7 +81,7 @@ impl Board {
                         }
                     }
                     "BoardsPerPanel" => {
-                        if let Ok(i) = vaule.parse::<u8>() {
+                        if let Ok(i) = value.parse::<u8>() {
                             boards_on_panel = i;
                         } else {
                             error_and_bail!("Error parsing BoardsPerPanel field in log {:?}", log);
@@ -93,28 +93,29 @@ impl Board {
 
                     _ => {}
                 }
-
             }
         }
 
         if serial.is_empty() || side.is_empty() || result.is_empty() {
-            error_and_bail!("Found no SerialNum, Side or TestStatus  field in log {:?}", log);
+            error_and_bail!(
+                "Found no SerialNum, Side or TestStatus  field in log {:?}",
+                log
+            );
         }
-
 
         if date_time.is_none() {
             error_and_bail!("Found no DateTime field in log {:?}", log);
         }
         let date_time = date_time.unwrap();
 
-        Ok(Board{
+        Ok(Board {
             log,
             serial,
             side,
             boards_on_panel,
             user,
             date_time,
-            result
+            result,
         })
     }
 
@@ -125,12 +126,16 @@ impl Board {
 
     // V102508400582DB828853020 -> B828853
     pub fn board_id(&self) -> &str {
-        &self.serial[13..=20]
+        &self.serial[14..=20]
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::Board;
+    use chrono::NaiveDateTime;
+    use std::path::PathBuf;
+
     #[test]
     fn dmc_conversions() {
         let board = Board {
@@ -139,9 +144,10 @@ mod tests {
             side: String::from("TOP"),
             boards_on_panel: 2,
             user: String::from("TU"),
-            date_time: NaiveDateTime::parse_from_str("03/26/25 15:14:58", "%m/%d/%y %H:%M:%S").unwrap(),
-            result: String::from("PASS")
-        }
+            date_time: NaiveDateTime::parse_from_str("03/26/25 15:14:58", "%m/%d/%y %H:%M:%S")
+                .unwrap(),
+            result: String::from("PASS"),
+        };
 
         assert_eq!("V102508400582D", board.short_dmc());
         assert_eq!("B828853", board.board_id());

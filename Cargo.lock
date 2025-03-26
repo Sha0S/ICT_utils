@@ -16,6 +16,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "CCL5_log_file"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "ICT_analysis"
 version = "0.0.0"
 dependencies = [
