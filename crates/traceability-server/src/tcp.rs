@@ -258,6 +258,27 @@ impl TcpServer {
                     format!("ER: {x}")
                 }
             },
+            "UPLOAD_PANEL" => {
+                if let Some(log) = tokens.get(1) {
+                    match self.upload_panel(log).await {
+                        Ok(x) => {
+                            self.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+                            debug!("FCT UPLOAD return value: {}", x);
+                            x
+                        }
+
+                        Err(x) => {
+                            self.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
+                            error!("Failed FCT UPLOAD: {x}");
+                            format!("ER: {x}")
+                        }
+                    }
+                } else {
+                    self.tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
+                    error!("Missing token after FCT_UPLOAD!");
+                    String::from("ER: Missing log token!")
+                }
+            }
             "TEST" => {
                 info!("TEST token recieved! Tokens: {:?}", tokens);
                 format!("TEST token recieved! Tokens: {:?}", tokens)
@@ -475,6 +496,86 @@ impl TcpServer {
         let t_max = ICT_log_file::u64_to_time(t_max_u64);
         for log in ict_logs {
             let mut final_note = note.clone();
+            if log.get_status() != 0 {
+                let failed_tests = log.get_failed_tests().join(", ");
+                final_note += &format!("Failed: {}", failed_tests);
+            }
+            final_note.truncate(200);
+
+            let log_path = format!("{}", log.get_source().to_string_lossy());
+            let striped_log_path = if &log_path[1..2] == ":" {
+                &log_path[2..]
+            } else {
+                &log_path
+            };
+
+            qtext += &format!(
+                "('{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
+                log.get_DMC(),
+                station,
+                if log.get_status() == 0 {
+                    "Passed"
+                } else {
+                    "Failed"
+                },
+                t_max,
+                striped_log_path,
+                log.get_SW_ver(),
+                final_note
+            );
+        }
+        qtext.pop(); // removes last ','
+
+        debug!("Upload: {}", qtext);
+        let query = Query::new(qtext);
+        query.execute(client).await?;
+
+        debug!("Upload OK");
+
+        Ok(String::from("OK"))
+    }
+
+    async fn upload_panel(&mut self, log: &str) -> anyhow::Result<String> {
+
+        let ict_logs = ICT_log_file::LogFile::load_panel(&PathBuf::from(log));
+
+        if ict_logs.is_err() {
+            error!("Upload panel: log parsing failed!");
+            bail!("Upload panel: log parsing failed!");
+        }
+
+        let ict_logs = ict_logs.unwrap();
+
+        let mut t_max_u64: u64 = 0;
+        for log in &ict_logs {
+            if t_max_u64 < log.get_time_end() {
+                t_max_u64 = log.get_time_end();
+            }
+        }
+
+        debug!("T_max: {}", t_max_u64);
+
+        if ict_logs.is_empty() {
+            error!("ICT log buffer is empty!");
+            bail!("ICT log buffer is empty!");
+        }
+
+        // Connect to the DB:
+        self.connect().await?;
+        let client = self.client.as_mut().unwrap();
+
+        let station = self.config.get_station_name().to_owned();
+
+        // Upload new results
+        let mut qtext = String::from(
+            "INSERT INTO [dbo].[SMT_Test] 
+            ([Serial_NMBR], [Station], [Result], [Date_Time], [Log_File_Name], [SW_Version], [Notes])
+            VALUES",
+        );
+
+        let t_max = ICT_log_file::u64_to_time(t_max_u64);
+        for log in ict_logs {
+            let mut final_note = String::new();
             if log.get_status() != 0 {
                 let failed_tests = log.get_failed_tests().join(", ");
                 final_note += &format!("Failed: {}", failed_tests);
