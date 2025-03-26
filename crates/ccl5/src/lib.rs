@@ -117,4 +117,33 @@ impl Board {
             result
         })
     }
+
+    // V102508400582DB828853020 -> V102508400582D
+    pub fn short_dmc(&self) -> &str {
+        &self.serial[..=13]
+    }
+
+    // V102508400582DB828853020 -> B828853
+    pub fn board_id(&self) -> &str {
+        &self.serial[13..=20]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dmc_conversions() {
+        let board = Board {
+            log: PathBuf::from("TestingOnly.txt"),
+            serial: String::from("V102508400582DB828853020"),
+            side: String::from("TOP"),
+            boards_on_panel: 2,
+            user: String::from("TU"),
+            date_time: NaiveDateTime::parse_from_str("03/26/25 15:14:58", "%m/%d/%y %H:%M:%S").unwrap(),
+            result: String::from("PASS")
+        }
+
+        assert_eq!("V102508400582D", board.short_dmc());
+        assert_eq!("B828853", board.board_id());
+    }
 }
