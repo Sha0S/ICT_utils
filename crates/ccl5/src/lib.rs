@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
-use log::{debug, error};
+use log::error;
 
 macro_rules! error_and_bail {
     ($($arg:tt)+) => {
@@ -49,7 +49,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn load<P: AsRef<Path> + std::fmt::Debug>(path: P) -> anyhow::Result<Board> {
+    pub fn load<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Board> {
         let log = path.as_ref().to_path_buf();
         let mut serial = String::new();
         let mut side = String::new();
@@ -128,6 +128,11 @@ impl Board {
     pub fn board_id(&self) -> &str {
         &self.serial[14..=20]
     }
+
+    // V102508400582DB828853020 + TOP side -> B828853_TOP
+    pub fn program_id(&self) -> String {
+        format!("{}_{}", self.board_id(), self.side)
+    }
 }
 
 #[cfg(test)]
@@ -151,5 +156,6 @@ mod tests {
 
         assert_eq!("V102508400582D", board.short_dmc());
         assert_eq!("B828853", board.board_id());
+        assert_eq!("B828853_TOP", board.program_id());
     }
 }
