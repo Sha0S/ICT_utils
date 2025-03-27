@@ -7,7 +7,7 @@ edition = "2021"
 embed-resource = "2.3"
 
 [dependencies]
-CCL5_log_file = { path = "..\\ccl5\\" }
+CCL5_log_file = { path = "..\\ccl5" }
 ICT_config = { path = "..\\config"}
 
 anyhow = "1.0.97"

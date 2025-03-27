@@ -126,6 +126,7 @@ name = "SMT_utils"
 version = "2.11.1"
 dependencies = [
  "AOI_log_file",
+ "CCL5_log_file",
  "ICT_auth",
  "ICT_config",
  "ICT_log_file",
