@@ -1,0 +1,24 @@
+.YES_TESTRPT_FMT3
+Version=   5
+SerialNum= V102508400582DB828853020
+Recipe=	  C:\AOI_DATA64\Recipe\RSA INV Control Board bot.rcp64
+Side=      Top
+LoginUser= a
+WorkOrder= E1234
+DateTime=  03/26/25 15:14:58
+PanelizedBoardID=   2
+BoardsPerPanel= 2
+MachineID= AOI-4330
+TestStatus= PASS
+[DefectList]
+GRID_B6 Solder  DCode=17 False Call
+GRID_C6 Solder  DCode=17 False Call
+GRID_C9 Solder  DCode=17 False Call
+GRID_C13 Solder  DCode=17 False Call
+GRID_F11 Solder  DCode=17 False Call
+GRID_H9 Solder  DCode=17 False Call
+GRID_H10 Solder  DCode=17 False Call
+GRID_I9 Solder  DCode=17 False Call
+[EndDefectList]
+[FilmThicknessMeasurement]
+[EndFilmThicknessMeasurement]
