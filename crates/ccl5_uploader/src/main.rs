@@ -284,7 +284,7 @@ fn get_logs(target_dirs: Vec<PathBuf>, last_date: DateTime<Local>) -> Result<Vec
             let file = file?;
             let path = file.path();
 
-            if path.is_file() && path.extension().is_some_and(|f| f == "xml" || f =="XML") {
+            if path.is_file() && path.extension().is_some_and(|f| f == "txt") {
                 if let Ok(x) = path.metadata() {
                     let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
                     if ct >= last_date {
