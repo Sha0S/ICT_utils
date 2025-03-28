@@ -1,13 +1,13 @@
 #![allow(non_snake_case)]
 
-use std::path::Path;
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
-mod test;
 pub mod helpers;
+mod test;
 
 macro_rules! error_and_bail {
     ($($arg:tt)+) => {
@@ -21,28 +21,25 @@ pub struct Panel {
     pub inspection_plan: String,
     pub variant: String,
     pub station: String,
-    
+
     pub inspection_date_time: Option<NaiveDateTime>,
     pub repair: Option<Repair>,
 
     pub boards: Vec<Board>,
 }
 
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Repair {
     pub date_time: NaiveDateTime,
-    pub operator: String
+    pub operator: String,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Board {
     pub barcode: String,
-    pub result: bool,           // true - pass, false - failed
-    pub windows: Vec<Window>
+    pub result: bool, // true - pass, false - failed
+    pub windows: Vec<Window>,
 }
-
-
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Window {
@@ -62,7 +59,7 @@ pub enum WindowResult {
     #[default]
     Fail,
     PseudoError,
-    Unknown
+    Unknown,
 }
 
 impl Panel {
@@ -78,8 +75,8 @@ impl Panel {
         let mut has_failed_boards = false;
 
         if let Some(ginfo) = root
-        .children()
-        .find(|f| f.has_tag_name("GlobalInformation"))
+            .children()
+            .find(|f| f.has_tag_name("GlobalInformation"))
         {
             for sub_child in ginfo.children().filter(|f| f.is_element()) {
                 match sub_child.tag_name().name() {
@@ -98,47 +95,46 @@ impl Panel {
                             debug!("InspectionPlan: {}", ret.inspection_plan);
                         }
 
-                        if let Some(x) = sub_child
-                        .children()
-                        .find(|f| f.has_tag_name("VariantName"))
+                        if let Some(x) =
+                            sub_child.children().find(|f| f.has_tag_name("VariantName"))
                         {
                             ret.variant = x.text().unwrap_or_default().to_owned();
                             debug!("Variant: {}", ret.variant);
                         }
                     }
                     "Inspection" => {
-                        let date =
-                            if let Some(x) = sub_child.children().find(|f| f.has_tag_name("Date")) {
-                                if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
-                                    y.text().unwrap_or_default()
-                                } else {
-                                    error_and_bail!("Inspection block has no Date -> End field!");
-                                }
+                        let date = if let Some(x) =
+                            sub_child.children().find(|f| f.has_tag_name("Date"))
+                        {
+                            if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
+                                y.text().unwrap_or_default()
                             } else {
-                                error_and_bail!("Inspection block has no Date block!");
-                            };
-                        let time =
-                            if let Some(x) = sub_child.children().find(|f| f.has_tag_name("Time")) {
-                                if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
-                                    y.text().unwrap_or_default()
-                                } else {
-                                    error_and_bail!("Inspection block has no Time -> End field!");
-                                }
+                                error_and_bail!("Inspection block has no Date -> End field!");
+                            }
+                        } else {
+                            error_and_bail!("Inspection block has no Date block!");
+                        };
+                        let time = if let Some(x) =
+                            sub_child.children().find(|f| f.has_tag_name("Time"))
+                        {
+                            if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
+                                y.text().unwrap_or_default()
                             } else {
-                                error_and_bail!("Inspection block has no Time block!");
-                            };
+                                error_and_bail!("Inspection block has no Time -> End field!");
+                            }
+                        } else {
+                            error_and_bail!("Inspection block has no Time block!");
+                        };
 
                         if !date.is_empty() && !time.is_empty() {
                             let t = format!("{date} {time}");
                             debug!("Raw time string: {t}");
-                            ret.inspection_date_time = Some(
-                                NaiveDateTime::parse_from_str(&t, "%Y%m%d %H%M%S")?);
+                            ret.inspection_date_time =
+                                Some(NaiveDateTime::parse_from_str(&t, "%Y%m%d %H%M%S")?);
                         }
                     }
                     "Repair" => {
-                       
-                        let operator =
-                        if let Some(x) = sub_child
+                        let operator = if let Some(x) = sub_child
                             .children()
                             .find(|f| f.has_tag_name("OperatorName"))
                         {
@@ -147,33 +143,38 @@ impl Panel {
                             error_and_bail!("Repair block has no operator field!");
                         };
 
-                        let date =
-                            if let Some(x) = sub_child.children().find(|f| f.has_tag_name("Date")) {
-                                if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
-                                    y.text().unwrap_or_default()
-                                } else {
-                                    error_and_bail!("Repair block has no Date -> End field!");
-                                }
+                        let date = if let Some(x) =
+                            sub_child.children().find(|f| f.has_tag_name("Date"))
+                        {
+                            if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
+                                y.text().unwrap_or_default()
                             } else {
-                                error_and_bail!("Repair block has no Date block!");
-                            };
-                        let time =
-                            if let Some(x) = sub_child.children().find(|f| f.has_tag_name("Time")) {
-                                if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
-                                    y.text().unwrap_or_default()
-                                } else {
-                                    error_and_bail!("Repair block has no Time -> End field!");
-                                }
+                                error_and_bail!("Repair block has no Date -> End field!");
+                            }
+                        } else {
+                            error_and_bail!("Repair block has no Date block!");
+                        };
+                        let time = if let Some(x) =
+                            sub_child.children().find(|f| f.has_tag_name("Time"))
+                        {
+                            if let Some(y) = x.children().find(|f| f.has_tag_name("End")) {
+                                y.text().unwrap_or_default()
                             } else {
-                                error_and_bail!("Repair block has no Time block!");
-                            };
+                                error_and_bail!("Repair block has no Time -> End field!");
+                            }
+                        } else {
+                            error_and_bail!("Repair block has no Time block!");
+                        };
 
                         if !date.is_empty() && !time.is_empty() {
                             let t = format!("{date} {time}");
                             debug!("Raw time string: {t}");
                             let date = NaiveDateTime::parse_from_str(&t, "%Y%m%d %H%M%S")?;
-                            
-                            ret.repair = Some(Repair { date_time: date, operator });
+
+                            ret.repair = Some(Repair {
+                                date_time: date,
+                                operator,
+                            });
                         }
                     }
                     _ => (),
@@ -183,7 +184,10 @@ impl Panel {
             error_and_bail!("Could not find <GlobalInformation>!");
         }
 
-        if ret.station.is_empty() || ret.inspection_plan.is_empty() || ret.inspection_date_time.is_none() {
+        if ret.station.is_empty()
+            || ret.inspection_plan.is_empty()
+            || ret.inspection_date_time.is_none()
+        {
             error_and_bail!("Missing mandatory <GlobalInformation> fields!");
         }
 
@@ -198,7 +202,7 @@ impl Panel {
             }
 
             ret.boards = vec![Board::default(); count];
-    
+
             for (i, child) in pcb_info
                 .children()
                 .filter(|f| f.tag_name().name() == "SinglePCB")
@@ -206,7 +210,7 @@ impl Panel {
             {
                 let mut serial = String::new();
                 let mut result = String::new();
-    
+
                 for sub_child in child.children().filter(|f| f.is_element()) {
                     match sub_child.tag_name().name() {
                         "Barcode" => {
@@ -218,7 +222,7 @@ impl Panel {
                         _ => {}
                     }
                 }
-    
+
                 debug!("{i}: serial: {serial}, result: {result}");
                 if !serial.is_empty() && !result.is_empty() {
                     if result != "PASS" {
@@ -244,14 +248,13 @@ impl Panel {
                 .find(|f| f.has_tag_name("ComponentInformation"))
             {
                 for window in comp_info.children().filter(|f| f.is_element()) {
-
                     let mut win_id = String::new();
                     let mut win_type = String::new();
                     let mut pcb_number: usize = 0;
                     let mut result: WindowResult = WindowResult::Unknown;
                     let mut mode = String::new();
                     let mut sub_mode = String::new();
-    
+
                     for sub_child in window.children().filter(|f| f.is_element()) {
                         match sub_child.tag_name().name() {
                             "WinID" => {
@@ -265,7 +268,7 @@ impl Panel {
                             }
 
                             // <MacroName> is Inspection station only, can use it to get Mode and Submode
-                            // example: 
+                            // example:
                             //      - IRISO_9860B-40Z14_MENI_17_0 -> Mode: MENI, SubMode: 17
                             //      - R0402_3D_GENR_30_15 -> Mode: GENR, SubMode: 30
                             "MacroName" => {
@@ -275,23 +278,27 @@ impl Panel {
                                 if let Some(sm) = macro_split.nth_back(1) {
                                     sub_mode = sm.to_owned();
                                 } else {
-                                    error_and_bail!("Failed to get sub mode form MacroName: {}", macro_text);
+                                    error_and_bail!(
+                                        "Failed to get sub mode form MacroName: {}",
+                                        macro_text
+                                    );
                                 }
 
-                                if let Some(sm) = macro_split.next_back(){
+                                if let Some(sm) = macro_split.next_back() {
                                     mode = sm.to_owned();
                                 } else {
-                                    error_and_bail!("Failed to get mode form MacroName: {}", macro_text);
+                                    error_and_bail!(
+                                        "Failed to get mode form MacroName: {}",
+                                        macro_text
+                                    );
                                 }
-
                             }
 
                             // <Result> block only exists on XMLs from the repair station
                             // Type = 2 is pseudo error, everything else is fail
                             "Result" => {
-                                if let Some(t) = sub_child
-                                    .children()
-                                    .find(|f| f.has_tag_name("Type"))
+                                if let Some(t) =
+                                    sub_child.children().find(|f| f.has_tag_name("Type"))
                                 {
                                     let result_text = t.text().unwrap_or_default().to_string();
                                     if result_text == "2" {
@@ -304,26 +311,34 @@ impl Panel {
 
                             // <Analysis> blocks contents change depending if it is from Inspection or Repair
                             // Repair: Mode and Submode are vaild, and used
-                            // Inspection: 
+                            // Inspection:
                             //      - Mode cannot be used, will have to read it from MacroName
                             //      - Submode is usable, but it can also be read from MacroName
                             //      - Result: 0 -> pass, anything else is fail
                             "Analysis" => {
                                 if ret.repair.is_some() {
-                                    for analysis_child in sub_child.children().filter(|f| f.is_element()) { 
+                                    for analysis_child in
+                                        sub_child.children().filter(|f| f.is_element())
+                                    {
                                         match analysis_child.tag_name().name() {
                                             "Mode" => {
-                                                mode = analysis_child.text().unwrap_or_default().to_string();
+                                                mode = analysis_child
+                                                    .text()
+                                                    .unwrap_or_default()
+                                                    .to_string();
                                             }
                                             "SubMode" => {
-                                                sub_mode = analysis_child.text().unwrap_or_default().to_string();
+                                                sub_mode = analysis_child
+                                                    .text()
+                                                    .unwrap_or_default()
+                                                    .to_string();
                                             }
                                             _ => {}
                                         }
                                     }
-                                } else if let Some(t) = sub_child
-                                .children()
-                                .find(|f| f.has_tag_name("Result")) {
+                                } else if let Some(t) =
+                                    sub_child.children().find(|f| f.has_tag_name("Result"))
+                                {
                                     let result_text = t.text().unwrap_or_default().to_string();
                                     if result_text == "0" {
                                         result = WindowResult::Pass
@@ -331,8 +346,6 @@ impl Panel {
                                         result = WindowResult::Fail
                                     }
                                 }
-                                
-                                
                             }
                             _ => {}
                         }
@@ -344,7 +357,12 @@ impl Panel {
                         error_and_bail!("Window result is Unknown!");
                     }
 
-                    if win_id.is_empty() || win_type.is_empty() || mode.is_empty() || sub_mode.is_empty() || pcb_number == 0 {
+                    if win_id.is_empty()
+                        || win_type.is_empty()
+                        || mode.is_empty()
+                        || sub_mode.is_empty()
+                        || pcb_number == 0
+                    {
                         error_and_bail!("Mandatory fields for Window are missing!");
                     }
 
@@ -353,7 +371,13 @@ impl Panel {
                     pcb_number -= 1;
 
                     if let Some(board) = ret.boards.get_mut(pcb_number) {
-                        board.windows.push(Window { id: win_id, win_type, analysis_mode: mode, analysis_sub_mode: sub_mode, result });
+                        board.windows.push(Window {
+                            id: win_id,
+                            win_type,
+                            analysis_mode: mode,
+                            analysis_sub_mode: sub_mode,
+                            result,
+                        });
                     } else {
                         error_and_bail!("Failed to get board number: {}", pcb_number);
                     }
@@ -362,7 +386,6 @@ impl Panel {
         }
 
         debug!("Processing OK!");
-
 
         Ok(ret)
     }

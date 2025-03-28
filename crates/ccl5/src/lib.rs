@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn dmc_conversions() {
-        let board = Board::load(".\\test_files\\ex01.txt").unwrap(); 
+        let board = Board::load(".\\test_files\\ex01.txt").unwrap();
 
         // serial in log: V102508400582DB828853020
         assert_eq!("V102508400582D", board.short_dmc());
