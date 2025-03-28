@@ -93,12 +93,9 @@ async fn main() -> Result<()> {
             if let Ok(last_date) = get_last_date() {
                 let last_date = last_date - tminus; 
 
-                // 2 - get possible directories
-                //let target_dirs = get_subdirs_for_aoi(&log_dir, &last_date);
-                let target_dirs = vec![log_dir.clone()];
-
-                // 3 - get logs
-                if let Ok(logs) = get_logs(target_dirs, last_date) {
+                // 3 - get logs and pdfs from target dir
+                let processed_files = get_logs(&log_dir, last_date);
+                if let Ok((logs, _)) = processed_files {
                     // 4 - process_logs
 
                     let mut processed_logs = Vec::new();
@@ -121,11 +118,7 @@ async fn main() -> Result<()> {
                             VALUES",
                         );
 
-                        for board in chunk {
-                     
-
-
-                    
+                        for board in chunk {                    
                                 qtext += &format!(
                                     "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
                                     board.serial,
@@ -163,6 +156,8 @@ async fn main() -> Result<()> {
                             new_logs += res.total();
                         }
                     }
+
+                    // 8 - move files to subdir
 
                     // 7 - update last_date or report the error
                     if all_ok {
@@ -276,33 +271,33 @@ async fn create_connection(config: &ICT_config::Config) -> Result<Client<tokio_u
         Ok(client)
 }
 
-fn get_logs(target_dirs: Vec<PathBuf>, last_date: DateTime<Local>) -> Result<Vec<PathBuf>> {
+// Return value: Result<(Vec<logfiles>, Vec<pdf_files>)>
+fn get_logs(dir: Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>,Vec<PathBuf>)> {
     let mut ret = Vec::new();
+    let mut ret_pdf = Vec::new();
 
-    for dir in target_dirs {
-        for file in fs::read_dir(dir)? {
-            let file = file?;
-            let path = file.path();
+    for file in fs::read_dir(dir)? {
+        let file = file?;
+        let path = file.path();
 
-            if path.is_file() && path.extension().is_some_and(|f| f == "txt") {
+        if path.is_file() {
+            if path.extension().is_some_and(|f| f == "txt") {
                 if let Ok(x) = path.metadata() {
                     let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
                     if ct >= last_date {
-
-                        // filtering temporary files from AOI / AXI
-                        if let Some(filestem) = path.file_stem() {
-                            let filestem = filestem.to_string_lossy();
-                            if !(filestem.ends_with("_AOI") || filestem.ends_with("_AXI")) {
-                                ret.push(path);
-                            }
-                        }
+                        ret.push(path);
                     }
+                }
+            } else if path.extension().is_some_and(|f| f == "pdf") {
+                let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
+                if ct >= last_date {
+                    ret_pdf.push(path);
                 }
             }
         }
     }
 
-    Ok(ret)
+    Ok((ret, ret_pdf))
 }
 
 fn get_last_date() -> Result<DateTime<Local>> {
