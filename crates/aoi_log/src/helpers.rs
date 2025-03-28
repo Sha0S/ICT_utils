@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use log::{debug, error, info};
 use crate::Window;
-
+use std::collections::HashMap;
 
 // For reading boards back from SQL,
 // where they are not combined into a Panel
@@ -18,6 +18,158 @@ pub struct SingleBoard {
     pub operator: String,
 
     pub windows: Vec<Window>
+}
+
+// Counts pseudo errors for statistics, v2
+pub struct PseudoErrC {
+    pub inspection_plans: Vec<String>,
+    pub total_pseudo: Vec<u32>,
+    pub total_boards: Vec<u32>,
+    pub macros: Vec<MacroErrC>
+}
+
+pub struct MacroErrC {
+    pub name: String,
+    pub total_pseudo: Vec<u32>,
+    pub packages: Vec<PackageErrC>
+}
+
+pub struct PackageErrC {
+    pub name: String,
+    pub total_pseudo: Vec<u32>,
+    pub positions: Vec<PositionErrC>
+}
+
+
+pub struct PositionErrC {
+    pub name: String,
+    pub total_pseudo: Vec<u32>
+}
+
+impl PseudoErrC {
+    pub fn generate(board_data: &[SingleBoard]) -> Self {
+
+        let mut inspection_plans: Vec<String> = Vec::new();
+
+        // 1 - gather the inspection plans
+        for board in &board_data {
+            if !inspection_plans.contains(&board.inspection_plan) {
+                inspection_plans.push(board.inspection_plan.clone());
+            }
+        }
+
+        let mut total_pseudo = vec![0;inspection_plans.len()];
+        let mut total_boards = vec![0;inspection_plans.len()];
+
+        // 2 - iterate over the boards, and search for faulty windows
+        let mut macros = Vec::new();
+
+        for board in &board_data {
+            if board.operator.is_empty() {continue;} // ignore logs not from the repair station
+            if board.windows.is_empty() {continue;} // ignore logs not containing faults
+
+            let inspection_id = inspection_plans.iter().position(|f| f == board.inspection_plan).unwrap(); // can't fail
+            total_boards[inspection_id] += 1;
+
+            for window in &board.windows {
+                if window.result != WindowResult::PseudoError {continue;} // ignore everything, that is not a pseudoerror
+
+                // Increase inspection plan total counter
+                total_pseudo[inspection_id] += 1;
+
+                // Check if the macro already exists in the list, if not make a new one
+                let macro_name = format!("{}_{}", window.analysis_mode, window.analysis_sub_mode);
+                let macro_counter = if let Some(i) = macros.iter().position(|f| f.name == macro_name)  {
+                    &mut macros[i]
+                } else {
+                    macros.push(
+                        MacroErrC {
+                            name: macro_name.clone(),
+                            total_pseudo: vec![0;inspection_plans.len()],
+                            packages: Vec::new()
+                        }
+                    );
+                    macros.last_mut().unwrap() // can't fail
+                };
+
+                // Increase macro total counter
+                macro_counter.total_pseudo[inspection_id] += 1;
+
+                // Check if the package already exists in the list, if not make a new one
+                let package_counter = if let Some(i) = macro_counter.packages.iter().position(|f| f.name == window.win_type)  {
+                    &mut macro_counter.packages[i]
+                } else {
+                    macro_counter.packages.push(
+                        PackageErrC {
+                            name: window.win_type.clone(),
+                            total_pseudo: vec![0;inspection_plans.len()],
+                            positions: Vec::new()
+                        }
+                    );
+                    macro_counter.packages.last_mut().unwrap() // can't fail
+                };
+
+                // Increase package total counter
+                package_counter.total_pseudo[inspection_id] += 1;
+
+
+                // Check if the position already exists in the list, if not make a new one
+                let position_counter = if let Some(i) = package_counter.positions.iter().position(|f| f.name == window.id)  {
+                    &mut macro_counter.positions[i]
+                } else {
+                    package_counter.positions.push(
+                        PositionErrC {
+                            name: window.id.clone(),
+                            total_pseudo: vec![0;inspection_plans.len()]
+                        }
+                    );
+                    package_counter.positions.last_mut().unwrap() // can't fail
+                };
+
+                // Increase positions total counter
+                position_counter.total_pseudo[inspection_id] += 1;
+            }
+        } 
+
+        Self {
+            inspection_plans,
+            total_pseudo,
+            total_boards,
+            macros
+        }
+    }
+
+    pub fn sort_by_ip_name(&mut self, ip_name: Option<&str> ) {
+        if let Some(name) = ip_name {
+            if let Some(id) = self.inspection_plans.iter().position(|f| f == name) {
+                self.sort_by_ip_id(Some(id));
+            }
+        } else {
+            self.sort_by_ip_id(None);
+        }
+    }
+
+    pub fn sort_by_ip_id(&mut self, ip_id: Option<usize>) {
+        if let Some(i) = ip_id {
+            if i >= self.inspection_plans.len() {return;}
+
+            self.macros.sort_by(|a,b| b.total_pseudo[i].cmp(&a.total_pseudo[i]));
+            for macroc in &mut self.macros {
+                macroc.packages.sort_by(|a,b| b.total_pseudo[i].cmp(&a.total_pseudo[i]));
+                for package in &mut macrosc.packages {
+                    package.positions.sort_by(|a,b| b.total_pseudo[i].cmp(&a.total_pseudo[i]));
+                }
+            }
+        } else {
+            self.macros.sort_by(|a,b| b.total_pseudo.iter().sum().cmp(&a.total_pseudo.iter().sum()));
+            for macroc in &mut self.macros {
+                macroc.packages.sort_by(|a,b| b.total_pseudo.iter().sum().cmp(&a.total_pseudo.iter().sum()));
+                for package in &mut macrosc.packages {
+                    package.positions.sort_by(|a,b| b.total_pseudo.iter().sum().cmp(&a.total_pseudo.iter().sum()));
+                }
+            }
+        }
+    }
 }
 
 // Counting pseudo errors from repair stations
