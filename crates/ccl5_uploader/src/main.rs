@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use log::{debug, error, info, warn};
 use std::{
-    fs, path::PathBuf, sync::mpsc::{self, SyncSender}, time::Duration
+    fs, path::{Path, PathBuf}, sync::mpsc::{self, SyncSender}, time::Duration
 };
 use tiberius::{Client, Query};
 use tokio::{net::TcpStream, time::sleep};
@@ -272,7 +272,7 @@ async fn create_connection(config: &ICT_config::Config) -> Result<Client<tokio_u
 }
 
 // Return value: Result<(Vec<logfiles>, Vec<pdf_files>)>
-fn get_logs(dir: Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>,Vec<PathBuf>)> {
+fn get_logs(dir: &Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>,Vec<PathBuf>)> {
     let mut ret = Vec::new();
     let mut ret_pdf = Vec::new();
 
@@ -289,9 +289,11 @@ fn get_logs(dir: Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>,Vec<P
                     }
                 }
             } else if path.extension().is_some_and(|f| f == "pdf") {
-                let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
-                if ct >= last_date {
-                    ret_pdf.push(path);
+                if let Ok(x) = path.metadata() {
+                    let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
+                    if ct >= last_date {
+                        ret_pdf.push(path);
+                    }
                 }
             }
         }

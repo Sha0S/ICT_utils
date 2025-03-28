@@ -1,7 +1,6 @@
 use chrono::NaiveDateTime;
 use log::{debug, error, info};
-use crate::Window;
-use std::collections::HashMap;
+use crate::{Window, WindowResult};
 
 // For reading boards back from SQL,
 // where they are not combined into a Panel
@@ -52,7 +51,7 @@ impl PseudoErrC {
         let mut inspection_plans: Vec<String> = Vec::new();
 
         // 1 - gather the inspection plans
-        for board in &board_data {
+        for board in board_data {
             if !inspection_plans.contains(&board.inspection_plan) {
                 inspection_plans.push(board.inspection_plan.clone());
             }
@@ -64,11 +63,11 @@ impl PseudoErrC {
         // 2 - iterate over the boards, and search for faulty windows
         let mut macros = Vec::new();
 
-        for board in &board_data {
+        for board in board_data {
             if board.operator.is_empty() {continue;} // ignore logs not from the repair station
             if board.windows.is_empty() {continue;} // ignore logs not containing faults
 
-            let inspection_id = inspection_plans.iter().position(|f| f == board.inspection_plan).unwrap(); // can't fail
+            let inspection_id = inspection_plans.iter().position(|f| *f == board.inspection_plan).unwrap(); // can't fail
             total_boards[inspection_id] += 1;
 
             for window in &board.windows {
@@ -79,7 +78,7 @@ impl PseudoErrC {
 
                 // Check if the macro already exists in the list, if not make a new one
                 let macro_name = format!("{}_{}", window.analysis_mode, window.analysis_sub_mode);
-                let macro_counter = if let Some(i) = macros.iter().position(|f| f.name == macro_name)  {
+                let macro_counter = if let Some(i) = macros.iter().position(|f: &MacroErrC| f.name == macro_name)  {
                     &mut macros[i]
                 } else {
                     macros.push(
@@ -115,7 +114,7 @@ impl PseudoErrC {
 
                 // Check if the position already exists in the list, if not make a new one
                 let position_counter = if let Some(i) = package_counter.positions.iter().position(|f| f.name == window.id)  {
-                    &mut macro_counter.positions[i]
+                    &mut package_counter.positions[i]
                 } else {
                     package_counter.positions.push(
                         PositionErrC {
@@ -156,16 +155,16 @@ impl PseudoErrC {
             self.macros.sort_by(|a,b| b.total_pseudo[i].cmp(&a.total_pseudo[i]));
             for macroc in &mut self.macros {
                 macroc.packages.sort_by(|a,b| b.total_pseudo[i].cmp(&a.total_pseudo[i]));
-                for package in &mut macrosc.packages {
+                for package in &mut macroc.packages {
                     package.positions.sort_by(|a,b| b.total_pseudo[i].cmp(&a.total_pseudo[i]));
                 }
             }
         } else {
-            self.macros.sort_by(|a,b| b.total_pseudo.iter().sum().cmp(&a.total_pseudo.iter().sum()));
+            self.macros.sort_by(|a,b| b.total_pseudo.iter().sum::<u32>().cmp(&a.total_pseudo.iter().sum()));
             for macroc in &mut self.macros {
-                macroc.packages.sort_by(|a,b| b.total_pseudo.iter().sum().cmp(&a.total_pseudo.iter().sum()));
-                for package in &mut macrosc.packages {
-                    package.positions.sort_by(|a,b| b.total_pseudo.iter().sum().cmp(&a.total_pseudo.iter().sum()));
+                macroc.packages.sort_by(|a,b| b.total_pseudo.iter().sum::<u32>().cmp(&a.total_pseudo.iter().sum()));
+                for package in &mut macroc.packages {
+                    package.positions.sort_by(|a,b| b.total_pseudo.iter().sum::<u32>().cmp(&a.total_pseudo.iter().sum()));
                 }
             }
         }
