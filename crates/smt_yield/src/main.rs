@@ -27,8 +27,8 @@ async fn main() -> eframe::Result {
         if let Ok(conn) = connection::create_connection(&conf).await {
             let native_options = eframe::NativeOptions {
                 viewport: egui::ViewportBuilder::default()
-                    .with_inner_size([600.0, 300.0])
-                    .with_min_inner_size([500.0, 220.0]),
+                    .with_inner_size([800.0, 300.0])
+                    .with_min_inner_size([700.0, 220.0]),
                 ..Default::default()
             };
         

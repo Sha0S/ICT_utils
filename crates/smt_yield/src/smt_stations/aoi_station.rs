@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use chrono::NaiveDateTime;
-use egui::style::ScrollStyle;
+use egui::{style::ScrollStyle, Layout};
+use egui_extras::{Column, TableBuilder};
 use log::{debug, error, info};
 use tiberius::{Client, Query};
 use tokio::net::TcpStream;
@@ -38,6 +39,7 @@ struct Line {
 struct Product {
     name: String,
     selected: bool,
+    available_by_selected_lines: bool,
     used_by_line: Vec<bool>,
 }
 
@@ -59,13 +61,16 @@ impl Stations {
         if let Some(pn) = self.products.iter().position(|f| f.name == product) {
             self.products[pn].used_by_line[line_number] = true;
         } else {
-            let mut prod = Product { name: product, selected: false, used_by_line: vec![false; self.lines.len()] };
+            let mut prod = Product { name: product, selected: false, available_by_selected_lines: true, used_by_line: vec![false; self.lines.len()] };
             prod.used_by_line[line_number] = true;
             self.products.push(prod);
         }
         
     }
 
+    fn get_line_selection(&self) -> Vec<bool> {
+        self.lines.iter().map(|f| f.selected).collect()
+    }
 
     fn get_selected_lines(&self) -> Vec<String> {
         let mut ret = Vec::new();
@@ -83,12 +88,28 @@ impl Stations {
         let mut ret = Vec::new();
 
         for product in &self.products {
-            if product.selected {
+            if product.selected && product.available_by_selected_lines {
                 ret.push(product.name.clone());
             }
         }
 
         ret
+    }
+}
+
+impl Product {
+    fn update_availability(&mut self, selected_lines: &[bool]) {
+        if !selected_lines.iter().any(|f| *f) { // if no lines are selected
+            self.available_by_selected_lines = true;
+        } else {
+            self.available_by_selected_lines = false;
+            for (line, product) in self.used_by_line.iter().zip(selected_lines) {
+                if *line && *product {
+                    self.available_by_selected_lines = true;
+                    return;
+                }
+            }
+        }
     }
 }
 
@@ -101,7 +122,7 @@ pub struct AoiStation {
     stations: Arc<Mutex<Stations>>,
 
     boards: Arc<Mutex<Vec<AOI_log_file::helpers::SingleBoard>>>,
-    error_counter: Arc<Mutex<Option<AOI_log_file::helpers::ErrorCounter>>>,
+    error_counter: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrC>>>,
 }
 
 impl Default for AoiStation {
@@ -316,13 +337,8 @@ impl AoiStation {
                 *message.lock().unwrap() =
                     format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
 
-                let counter = AOI_log_file::helpers::ErrorCounter::generate(&boards.lock().unwrap());
-
-                debug!(
-                    "ErrorCounter: {} pseudo errors in {} boards",
-                    counter.total_pseudo, counter.number_of_boards
-                );
-
+                let mut counter = AOI_log_file::helpers::PseudoErrC::generate(&boards.lock().unwrap());
+                counter.sort_by_ip_id(None);
                 *error_counter.lock().unwrap() = Some(counter);
 
                 *status.lock().unwrap() = Status::Standby;
@@ -350,19 +366,32 @@ impl AoiStation {
 
         
         let mut stations = self.stations.lock().unwrap();
+        let mut stations_changed = false;
 
         for line in &mut stations.lines {
             ui.horizontal(|ui| {
-                ui.checkbox(&mut line.selected, &line.name);
+                if ui.checkbox(&mut line.selected, &line.name).changed() {
+                    stations_changed = true;
+                }
             });
         }
+
+        let station_update = if stations_changed {
+            Some(stations.get_line_selection())
+        } else {None};
 
         ui.separator();
 
         for product in &mut stations.products {
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut product.selected, &product.name);
-            });
+            if let Some(line_sel) = &station_update {
+                product.update_availability(line_sel);
+            }
+
+            if product.available_by_selected_lines {
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut product.selected, &product.name);
+                });
+            }
         }
 
         
@@ -392,85 +421,95 @@ impl AoiStation {
             return;
         }
 
-        if let Some(counter) = self.error_counter.lock().unwrap().as_ref() {
+        if let Some(counter) = self.error_counter.lock().unwrap().as_mut() {
+            let mut sort_after = None;
 
-            
-            egui::ScrollArea::vertical()
-            .show(ui, |ui| {
-                for program in &counter.inspection_plans {
-
-                    let id = ui.make_persistent_id(&program.name);
-                    egui::collapsing_header::CollapsingState::load_with_default_open(
-                        ui.ctx(),
-                        id,
-                        false,
-                    )
-                    .show_header(ui, |ui| {
-                        ui.label(&program.name);
-                        ui.label(format!("({} pcb)", program.number_of_boards));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(program.total_pseudo.to_string());
-                        });
-                    }).body(|ui| {
-                        for macro_name in &program.macros {
-                            let id = ui.make_persistent_id(program.name.clone() + &macro_name.name);
-                            egui::collapsing_header::CollapsingState::load_with_default_open(
-                            ui.ctx(),
-                            id,
-                            false,
-                        )
-                        .show_header(ui, |ui| {
-                            ui.label(&macro_name.name);
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(macro_name.total_pseudo.to_string());
-                                },
-                            );
-                        })
-                        .body(|ui| {
-                            for package in &macro_name.packages {
-                                let id = ui.make_persistent_id(
-                                    program.name.clone() + &macro_name.name + &package.name,
-                                );
-                                egui::collapsing_header::CollapsingState::load_with_default_open(
-                                    ui.ctx(),
-                                    id,
-                                    false,
-                                )
-                                .show_header(ui, |ui| {
-                                    ui.label(&package.name);
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            ui.label(package.total_pseudo.to_string());
-                                        },
-                                    );
-                                })
-                                .body(|ui| {
-                                    
-                                        for position in &package.positions {
-                                            ui.horizontal(|ui|{
-                                                ui.label(&position.name);
-                                                ui.with_layout(
-                                                    egui::Layout::right_to_left(egui::Align::Center),
-                                                    |ui| {
-                                                        ui.label(position.total_pseudo.to_string());
-                                                    },
-                                                );
-                                            });
-                                            
-                                        }
-                                    
-                                });
+            TableBuilder::new(ui)
+            .striped(true)
+            .cell_layout(Layout::from_main_dir_and_cross_align(egui::Direction::LeftToRight, egui::Align::Center))
+            .column(Column::auto().at_least(200.0))
+            .columns(Column::auto(), counter.inspection_plans.len())
+            .header(20.0, |mut header| {
+                header.col(|ui| {
+                    ui.label("Macros");
+                });
+                for (i,iplan) in counter.inspection_plans.iter().enumerate() {
+                    header.col(|ui| {
+                        ui.vertical(|ui| {
+                            if ui.label(iplan).clicked() {
+                                sort_after = Some(i);
                             }
+                            ui.label(format!("{} pcb", counter.total_boards[i]));
+                            ui.label(counter.total_pseudo[i].to_string());
                         });
-                        }
+                        ui.add_space(10.0);
                     });
                 }
-            });
-        }
 
-        // show data
+            })
+            .body(|mut body| {
+                
+
+                for macroc in &mut counter.macros {
+                    body.row(20.0, |mut row| {
+                        row.col(|ui| {
+                                colapsing_button(ui, &mut macroc.show);
+                                ui.label(&macroc.name);                            
+                        });
+                        for iplanc in &macroc.total_pseudo {
+                            row.col(|ui| {
+                                    ui.label(iplanc.to_string());
+                            });
+                        }
+
+                    });
+
+                    if macroc.show {
+                        for package in &mut macroc.packages {
+                            body.row(20.0, |mut row| {
+                                row.col(|ui| {
+                                        ui.add_space(20.0);
+                                        colapsing_button(ui, &mut package.show);
+                                        ui.label(&package.name);
+                                });
+                                for iplanc in &package.total_pseudo {
+                                    row.col(|ui| {
+                                            ui.label(iplanc.to_string());
+                                    });
+                                }
+                            });
+
+                            if package.show {
+                                for position in &package.positions {
+                                    body.row(20.0, |mut row| {
+                                        row.col(|ui| {
+                                                ui.add_space(60.0);
+                                                ui.label(&position.name);
+                                        });
+                                        for iplanc in &position.total_pseudo {
+                                            row.col(|ui| {
+                                                    ui.label(iplanc.to_string());
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if let Some(i) = sort_after {
+                counter.sort_by_ip_id(Some(i));
+            }
+        }
+    }
+}
+
+fn colapsing_button(ui: &mut egui::Ui, b: &mut bool) {
+    if ui.button(
+        if *b {"V"} else {">"}
+    ).clicked() {
+        *b = !*b;
     }
 }

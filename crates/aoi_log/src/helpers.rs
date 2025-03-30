@@ -20,6 +20,8 @@ pub struct SingleBoard {
 }
 
 // Counts pseudo errors for statistics, v2
+
+#[derive(Debug)]
 pub struct PseudoErrC {
     pub inspection_plans: Vec<String>,
     pub total_pseudo: Vec<u32>,
@@ -27,18 +29,23 @@ pub struct PseudoErrC {
     pub macros: Vec<MacroErrC>,
 }
 
+#[derive(Debug)]
 pub struct MacroErrC {
     pub name: String,
     pub total_pseudo: Vec<u32>,
+    pub show: bool,
     pub packages: Vec<PackageErrC>,
 }
 
+#[derive(Debug)]
 pub struct PackageErrC {
     pub name: String,
     pub total_pseudo: Vec<u32>,
+    pub show: bool,
     pub positions: Vec<PositionErrC>,
 }
 
+#[derive(Debug)]
 pub struct PositionErrC {
     pub name: String,
     pub total_pseudo: Vec<u32>,
@@ -92,6 +99,7 @@ impl PseudoErrC {
                         macros.push(MacroErrC {
                             name: macro_name.clone(),
                             total_pseudo: vec![0; inspection_plans.len()],
+                            show: false,
                             packages: Vec::new(),
                         });
                         macros.last_mut().unwrap() // can't fail
@@ -111,6 +119,7 @@ impl PseudoErrC {
                     macro_counter.packages.push(PackageErrC {
                         name: window.win_type.clone(),
                         total_pseudo: vec![0; inspection_plans.len()],
+                        show: false,
                         positions: Vec::new(),
                     });
                     macro_counter.packages.last_mut().unwrap() // can't fail
