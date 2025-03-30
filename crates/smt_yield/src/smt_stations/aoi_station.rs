@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, time::Duration};
 
 use chrono::NaiveDateTime;
 use egui::{style::ScrollStyle, Layout};
@@ -9,7 +9,7 @@ use tokio::net::TcpStream;
 use tokio_stream::StreamExt;
 use tokio_util::compat::Compat;
 
-use crate::TimeFrame;
+use crate::{connection::{check_connection, create_connection}, TimeFrame};
 
 
 
@@ -148,7 +148,7 @@ impl AoiStation {
     fn initialize(
         &mut self,
         ctx: &egui::Context,
-        connection: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
+        connection: Arc<tokio::sync::Mutex<Option<Client<Compat<TcpStream>>>>>,
     ) {
         if *self.status.lock().unwrap() != Status::UnInitialized {
             return;
@@ -165,7 +165,38 @@ impl AoiStation {
         let stations = self.stations.clone();
 
         tokio::spawn(async move {
-            let mut client = connection.lock().await;
+            let mut client_opt = connection.lock().await;
+
+            loop {
+                if client_opt.is_none() {
+                    match create_connection().await {
+                        Ok(conn) => {
+                            *client_opt = Some(conn)
+                        }
+                        Err(e) => {
+                            error!("Initialization FAILED! {}", e);
+                            *status.lock().unwrap() = Status::Error;
+                            *message.lock().unwrap() =
+                                format!("Az SQL kapcsolat sikertelen!\n10mp múlva újra próbáljuk!\n{e}");
+
+                            tokio::time::sleep(Duration::from_secs(10)).await;
+                            continue;
+                        }   
+                    }
+                }
+
+                if !check_connection(client_opt.as_mut().unwrap()).await {
+                    *client_opt = None;
+                    error!("SQL server diconnected!");
+                    *status.lock().unwrap() = Status::Error;
+                    *message.lock().unwrap() =
+                        "Az kapcsolat megszakadt! Újracsatlakozás...".to_string();
+                } else {
+                    break;
+                }
+            }
+
+            let client= client_opt.as_mut().unwrap();
 
             let query = Query::new(
                 "SELECT Station, Program
@@ -173,7 +204,7 @@ impl AoiStation {
                 GROUP BY Station, Program",
             );
 
-            if let Ok(mut result) = query.query(&mut client).await {
+            if let Ok(mut result) = query.query(client).await {
                 while let Some(row) = result.next().await {
                     let row = row.unwrap();
                     match row {
@@ -208,7 +239,7 @@ impl AoiStation {
         &mut self,
         ctx: &egui::Context,
         timeframe: TimeFrame<'_>,
-        connection: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
+        connection: Arc<tokio::sync::Mutex<Option<Client<Compat<TcpStream>>>>>,
     ) {
         if *self.status.lock().unwrap() != Status::Standby {
             return;
@@ -253,8 +284,38 @@ impl AoiStation {
         };
 
         tokio::spawn(async move {
-            let mut client = connection.lock().await;
+            let mut client_opt = connection.lock().await;
 
+            loop {
+                if client_opt.is_none() {
+                    match create_connection().await {
+                        Ok(conn) => {
+                            *client_opt = Some(conn)
+                        }
+                        Err(e) => {
+                            error!("Connection FAILED! {}", e);
+                            *status.lock().unwrap() = Status::Error;
+                            *message.lock().unwrap() =
+                                format!("Az SQL kapcsolat sikertelen!\n10mp múlva újra próbáljuk!\n{e}");
+
+                            tokio::time::sleep(Duration::from_secs(10)).await;
+                            continue;
+                        }   
+                    }
+                }
+
+                if !check_connection(client_opt.as_mut().unwrap()).await {
+                    *client_opt = None;
+                    error!("SQL server diconnected!");
+                    *status.lock().unwrap() = Status::Error;
+                    *message.lock().unwrap() =
+                        "Az kapcsolat megszakadt! Újracsatlakozás...".to_string();
+                } else {
+                    break;
+                }
+            }
+
+            let client = client_opt.as_mut().unwrap();
             /*
                 SELECT Serial_NMBR, Date_Time, Station, Program, Variant, Operator, Result, "Data"
                 FROM dbo.SMT_AOI_RESULTS
@@ -357,7 +418,7 @@ impl AoiStation {
         ctx: &egui::Context,
         ui: &mut egui::Ui,
         timeframe: TimeFrame<'_>,
-        connection: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
+        connection: Arc<tokio::sync::Mutex<Option<Client<Compat<TcpStream>>>>>,
     ) {
         if !self.initialized() {
             self.initialize(ctx, connection.clone());

@@ -73,7 +73,8 @@ async fn connect(tib_config: tiberius::Config) -> anyhow::Result<Client<Compat<T
     Ok(client)
 }
 
-pub async fn create_connection(config: &Config) -> Result<Client<Compat<TcpStream>>> {
+pub async fn create_connection() -> Result<Client<Compat<TcpStream>>> {
+    let config = Config::load()?;
     // Tiberius configuartion:
 
     let sql_server = config.server.to_owned();
@@ -104,4 +105,8 @@ pub async fn create_connection(config: &Config) -> Result<Client<Compat<TcpStrea
     query.execute(&mut client).await?;
 
     Ok(client)
+}
+
+pub async fn check_connection(client: &mut Client<Compat<TcpStream>>) -> bool {
+    client.execute("SELECT 1", &[]).await.is_ok()
 }

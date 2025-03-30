@@ -2,14 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use chrono::NaiveDate;
-use log::error;
-use tiberius::Client;
-use tokio::net::TcpStream;
-use tokio_util::compat::Compat;
-
 
 mod connection;
-
 mod smt_stations;
 use smt_stations as SMT;
 
@@ -23,26 +17,19 @@ async fn main() -> eframe::Result {
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
-    if let Ok(conf) = connection::Config::load() {
-        if let Ok(conn) = connection::create_connection(&conf).await {
-            let native_options = eframe::NativeOptions {
-                viewport: egui::ViewportBuilder::default()
-                    .with_inner_size([800.0, 300.0])
-                    .with_min_inner_size([700.0, 220.0]),
-                ..Default::default()
-            };
-        
-            eframe::run_native(
-                &format!("SMT yield checker ({VERSION})"),
-                native_options,
-                Box::new(|cc| Ok(Box::new(SmtYieldApp::new(cc, conn)))),
-            )?
-        } else {
-            error!("Could not connect to SQL, shutting down!");
-        }
-    } else {
-        error!("Could not read configuration, shutting down!");
-    }
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 300.0])
+            .with_min_inner_size([700.0, 220.0]),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        &format!("SMT yield checker ({VERSION})"),
+        native_options,
+        Box::new(|cc| Ok(Box::new(SmtYieldApp::new(cc)))),
+    )?;
+
 
     Ok(())
 }
@@ -60,14 +47,14 @@ struct SmtYieldApp {
 }
 
 impl SmtYieldApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, connection: Client<Compat<TcpStream>>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self { 
             start_date: chrono::Local::now().date_naive(), 
             start_time: (0,0), 
             use_end_date: false, 
             end_date: chrono::Local::now().date_naive(), 
             end_time: (23,59), 
-            station_handler: SMT::StationHandler::new(connection) 
+            station_handler: SMT::StationHandler::new() 
         }
     }
 }

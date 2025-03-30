@@ -24,7 +24,7 @@ pub enum Station {
 
 #[derive(Debug)]
 pub struct StationHandler {
-    connection: Arc<tokio::sync::Mutex<Client<Compat<TcpStream>>>>,
+    connection: Arc<tokio::sync::Mutex<Option<Client<Compat<TcpStream>>>>>,
 
     selected_station: Station,
     aoi_station: AoiStation,
@@ -33,9 +33,9 @@ pub struct StationHandler {
 }
 
 impl StationHandler {
-    pub fn new(conn: Client<Compat<TcpStream>>) -> Self {
+    pub fn new() -> Self {
         Self { 
-            connection: Arc::new(tokio::sync::Mutex::new(conn)), 
+            connection: Arc::new(tokio::sync::Mutex::new(None)), 
             selected_station: Station::Aoi, 
             aoi_station: AoiStation::default(),  
             ict_station: IctStation::default(),
