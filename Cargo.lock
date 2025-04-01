@@ -1028,12 +1028,12 @@ name = "ccl5_uploader"
 version = "0.1.0"
 dependencies = [
  "CCL5_log_file",
- "ICT_config",
  "anyhow",
  "chrono",
  "embed-resource",
  "env_logger",
  "log",
+ "rust-ini",
  "tiberius",
  "tokio",
  "tokio-util",

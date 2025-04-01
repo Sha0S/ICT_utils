@@ -2,7 +2,6 @@
 #![allow(non_snake_case)]
 
 use anyhow::{bail, Result};
-use chrono::{DateTime, Local};
 use log::{debug, error, info, warn};
 use std::{
     fs,
@@ -14,6 +13,13 @@ use tiberius::{Client, Query};
 use tokio::{net::TcpStream, time::sleep};
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 use tray_item::{IconSource, TrayItem};
+
+macro_rules! error_and_bail {
+    ($($arg:tt)+) => {
+        error!($($arg)+);
+        bail!($($arg)+);
+    };
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,23 +35,14 @@ async fn main() -> Result<()> {
 
     // SQL uploader thread
     tokio::spawn(async move {
-
         // Loading configuration, and creating a connection to the SQL server
-        let config = ICT_config::Config::read(ICT_config::CONFIG);
+        let config = Config::read();
         if config.is_err() {
             error!("Failed to load configuration! Terminating.");
             sql_tx.send(Message::FatalError).unwrap();
             return;
         }
         let config = config.unwrap();
-
-        if config.get_aoi_dir().is_empty() {
-            error!("Configuration is missing AOI dir field!");
-            sql_tx.send(Message::FatalError).unwrap();
-            return;
-        }
-
-        let log_dir = PathBuf::from(config.get_aoi_dir());
 
         let mut client = loop {
             if let Ok(client) = create_connection(&config).await {
@@ -85,30 +82,30 @@ async fn main() -> Result<()> {
             debug!("CCL5 auto update started");
 
             // 1 - get logs and pdfs from target dir
-            let processed_files = get_logs(&log_dir);
+            let processed_files = get_logs(&config.log_dir);
             if let Ok((logs, pdfs)) = processed_files {
-
-                // 2 - process_logs
-                let mut processed_logs = Vec::new();
-                for log in &logs {
-                    if let Ok(plog) = CCL5_log_file::Board::load(log) {
-                        processed_logs.push(plog);
-                    } else {
-                        error!("Failed to process log: {:?}", log);
-                    }
-                }
-
+                
                 // 3 - uploading in chunks
-                for chunk in processed_logs.chunks(config.get_aoi_chunks()) {
+                for chunk in logs.chunks(config.chunks) {
+
+                    // 2 - process_logs
+                    let mut processed_logs = Vec::new();
+                    for log in chunk {
+                        if let Ok(plog) = CCL5_log_file::Board::load(log) {
+                            processed_logs.push(plog);
+                        } else {
+                            error!("Failed to process log: {:?}", log);
+                        }
+                    }
 
                     // 4 - craft the SQL query
                     let mut qtext = String::from(
                         "INSERT INTO [dbo].[AOI_RESULTS] 
-                        ([Barcode], [Lead_DMC], [ShortDMC], [Board], [Side], [Line] [Operator], [Result], [Palette_size], [FileDate], [RowUpdated], [Logfile])
+                        ([Barcode], [Lead_DMC], [ShortDMC], [Board], [Side], [Line], [Operator], [Result], [Palette_size], [FileDate], [RowUpdated], [FileName])
                         VALUES",
                     );
 
-                    for board in chunk {
+                    for board in processed_logs {
                         qtext += &format!(
                                 "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
                                 board.serial,
@@ -116,7 +113,7 @@ async fn main() -> Result<()> {
                                 board.short_dmc(),
                                 board.program_id(),
                                 board.side,
-                                config.get_station_name(),
+                                config.station,
                                 board.user,
                                 board.result,
                                 board.boards_on_panel,
@@ -139,18 +136,18 @@ async fn main() -> Result<()> {
                     } else {
                         debug!("Upload succesfull!");
                         // 6 - move files to subdir
-                        todo!();
+                        if let Err(e) = move_files(&config.dest_dir, chunk ) {
+                            error!("Moving log files failed: {e}");
+                        }
                     }
                 }
+                if let Err(e) = move_files(&config.dest_dir, &pdfs ) {
+                    error!("Moving pdf files failed: {e}");
+                }
             }
-            
-
-
-
-
 
             // wait and repeat
-            sleep(Duration::from_secs(config.get_aoi_deltat())).await;
+            sleep(Duration::from_secs(config.deltat)).await;
         }
     });
 
@@ -207,17 +204,16 @@ async fn connect(
 }
 
 async fn create_connection(
-    config: &ICT_config::Config,
+    config: &Config,
 ) -> Result<Client<tokio_util::compat::Compat<TcpStream>>> {
     // Tiberius configuartion:
 
-    let sql_server = config.get_server().to_owned();
-    let sql_user = config.get_username().to_owned();
-    let sql_pass = config.get_password().to_owned();
-
     let mut tib_config = tiberius::Config::new();
-    tib_config.host(sql_server);
-    tib_config.authentication(tiberius::AuthMethod::sql_server(sql_user, sql_pass));
+    tib_config.host(&config.server);
+    tib_config.authentication(tiberius::AuthMethod::sql_server(
+        &config.username,
+        &config.password,
+    ));
     tib_config.trust_cert(); // Most likely not needed.
 
     let mut client_tmp = connect(tib_config.clone()).await;
@@ -233,7 +229,7 @@ async fn create_connection(
     let mut client = client_tmp?;
 
     // USE [DB]
-    let qtext = format!("USE [{}]", config.get_database());
+    let qtext = format!("USE [{}]", config.database);
     debug!("USE DB: {}", qtext);
     let query = Query::new(qtext);
     query.execute(&mut client).await?;
@@ -242,7 +238,7 @@ async fn create_connection(
 }
 
 // Return value: Result<(Vec<logfiles>, Vec<pdf_files>)>
-fn get_logs(dir: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+fn get_logs<P: AsRef<Path>>(dir: &P) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     let mut ret = Vec::new();
     let mut ret_pdf = Vec::new();
 
@@ -251,11 +247,12 @@ fn get_logs(dir: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
         let path = file.path();
 
         if path.is_file() {
-            let file_name = path.filename().unwrap();
+            let file_name = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let file_extension = path.extension();
             if file_name.starts_with("V1") {
-                if path.extension().is_some_and(|f| f == "txt") {
+                if file_extension.is_some_and(|f| f == "txt") {
                     ret.push(path);
-                } else if path.extension().is_some_and(|f| f == "pdf") {
+                } else if file_extension.is_some_and(|f| f == "pdf") {
                     ret_pdf.push(path);
                 }
             }
@@ -265,12 +262,34 @@ fn get_logs(dir: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     Ok((ret, ret_pdf))
 }
 
-fn move_logs(dest: &Path, logs: (Vec<PathBuf>, Vec<PathBuf>)) -> Result<()> {
+fn move_files<P: AsRef<Path>>(dest: &P, files: &[PathBuf]) -> Result<()> {
+    let dest_dir = dest.as_ref();
+    if !dest_dir.is_dir() {
+        info!("Found no directory [{:?}], attempting to create it.", dest_dir);
+        std::fs::create_dir_all(dest_dir)?;
+    }
+
+    // crating subdir /yyyy_mm_dd/
+    let date_now = chrono::Local::now();
+    let subdir = date_now.format("%Y_%m_%d").to_string();
+    let dest_dir_final = dest_dir.join(&subdir);
+    if !dest_dir_final.is_dir() {
+        info!("Found no directory [{:?}], attempting to create it.", dest_dir_final);
+        std::fs::create_dir_all(&dest_dir_final)?;
+    }
+
+    // iterating over the files, and moving them
+    for file in files {
+        if let Some(filename) = file.file_name() {
+            let dest_file_name = dest_dir_final.clone().join(filename);
+            debug!("Moving file from {:?} to {:?}", file, dest_file_name);
+            std::fs::rename(file, dest_file_name)?;
+        }
+    }
 
 
     Ok(())
 }
-
 
 #[derive(Debug)]
 pub enum IconCollor {
@@ -291,10 +310,7 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
 
     let mut tray = TrayItem::new("AOI Uploader", IconSource::Resource("red-icon")).unwrap();
 
-    ret.push(
-        // 0
-        tray.inner_mut().add_label_with_id("AOI Uploader").unwrap(),
-    );
+    ret.push(tray.inner_mut().add_label_with_id("AOI Uploader").unwrap());
 
     tray.inner_mut().add_separator().unwrap();
 
@@ -305,4 +321,86 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     .unwrap();
 
     (tray, ret)
+}
+
+#[derive(Debug, Default)]
+pub struct Config {
+    server: String,
+    database: String,
+    password: String,
+    username: String,
+
+    station: String,
+    log_dir: String,
+    dest_dir: String,
+    chunks: usize,
+    deltat: u64,
+}
+
+impl Config {
+    pub fn read() -> anyhow::Result<Config> {
+        let mut c = Config::default();
+
+        if let Ok(config) = ini::Ini::load_from_file(".\\config.ini") {
+            if let Some(jvserver) = config.section(Some("JVSERVER")) {
+                // mandatory fields:
+                if let Some(server) = jvserver.get("SERVER") {
+                    c.server = server.to_owned();
+                }
+                if let Some(password) = jvserver.get("PASSWORD") {
+                    c.password = password.to_owned();
+                }
+                if let Some(username) = jvserver.get("USERNAME") {
+                    c.username = username.to_owned();
+                }
+                if let Some(database) = jvserver.get("DATABASE") {
+                    c.database = database.to_owned();
+                }
+
+                if c.server.is_empty()
+                    || c.password.is_empty()
+                    || c.username.is_empty()
+                    || c.database.is_empty()
+                {
+                    error_and_bail!("ER: Missing fields from configuration file!");
+                }
+            } else {
+                error_and_bail!("ER: Could not find [JVSERVER] field!");
+            }
+
+            if let Some(app) = config.section(Some("AOI")) {
+                if let Some(station) = app.get("STATION") {
+                    c.station = station.to_owned();
+                } else {
+                    c.station = "Line5".to_string();
+                }
+
+                if let Some(dir) = app.get("DIR") {
+                    c.log_dir = dir.to_owned();
+                }
+
+                if let Some(dir) = app.get("DEST") {
+                    c.dest_dir = dir.to_owned();
+                }
+
+                if let Some(chunks) = app.get("CHUNKS") {
+                    c.chunks = chunks.parse().unwrap_or(10);
+                }
+
+                if let Some(chunks) = app.get("DELTA_T") {
+                    c.deltat = chunks.parse().unwrap_or(600);
+                }
+
+                if c.log_dir.is_empty() || c.dest_dir.is_empty() {
+                    error_and_bail!("ER: Missing field in configuration file! AOI/DIR and AOI/DEST fields are mandatory!");
+                }
+            } else {
+                error_and_bail!("ER: Could not find [JVSERVER] field!");
+            }
+        } else {
+            error_and_bail!("ER: Could not read configuration file!");
+        }
+
+        Ok(c)
+    }
 }
