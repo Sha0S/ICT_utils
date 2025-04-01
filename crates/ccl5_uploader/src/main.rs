@@ -29,6 +29,8 @@ async fn main() -> Result<()> {
 
     // SQL uploader thread
     tokio::spawn(async move {
+
+        // Loading configuration, and creating a connection to the SQL server
         let config = ICT_config::Config::read(ICT_config::CONFIG);
         if config.is_err() {
             error!("Failed to load configuration! Terminating.");
@@ -44,7 +46,6 @@ async fn main() -> Result<()> {
         }
 
         let log_dir = PathBuf::from(config.get_aoi_dir());
-        let tminus = Duration::from_secs(config.get_aoi_tminus());
 
         let mut client = loop {
             if let Ok(client) = create_connection(&config).await {
@@ -58,6 +59,7 @@ async fn main() -> Result<()> {
 
         sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
 
+        // Main loop
         loop {
             // 0 - check connection, reconnect if needed
             loop {
@@ -81,98 +83,71 @@ async fn main() -> Result<()> {
             }
 
             debug!("CCL5 auto update started");
-            let start_time = chrono::Local::now();
-            let mut new_logs = 0;
 
-            // 1 - get date_time of the last update
-            if let Ok(last_date) = get_last_date() {
-                let last_date = last_date - tminus;
+            // 1 - get logs and pdfs from target dir
+            let processed_files = get_logs(&log_dir);
+            if let Ok((logs, pdfs)) = processed_files {
 
-                // 3 - get logs and pdfs from target dir
-                let processed_files = get_logs(&log_dir, last_date);
-                if let Ok((logs, _)) = processed_files {
-                    // 4 - process_logs
-
-                    let mut processed_logs = Vec::new();
-                    for log in logs {
-                        if let Ok(plog) = CCL5_log_file::Board::load(&log) {
-                            processed_logs.push(plog);
-                        } else {
-                            error!("Failed to process log: {:?}", log);
-                        }
-                    }
-
-                    let mut all_ok = true;
-                    // uploading in chunks
-                    for chunk in processed_logs.chunks(config.get_aoi_chunks()) {
-                        // 5 - craft the SQL query
-
-                        let mut qtext = String::from(
-                            "INSERT INTO [dbo].[AOI_RESULTS] 
-                            ([Barcode], [Lead_DMC], [ShortDMC], [Board], [Side], [Line] [Operator], [Result], [Palette_size], [FileDate], [RowUpdated], [Logfile])
-                            VALUES",
-                        );
-
-                        for board in chunk {
-                            qtext += &format!(
-                                    "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
-                                    board.serial,
-                                    board.serial,
-                                    board.short_dmc(),
-                                    board.program_id(),
-                                    board.side,
-                                    config.get_station_name(),
-                                    board.user,
-                                    board.result,
-                                    board.boards_on_panel,
-                                    board.date_time,
-                                    board.date_time,
-                                    board.log.file_name().unwrap().to_string_lossy()
-                                );
-                        }
-                        qtext.pop(); // removes last ','
-
-                        // 6 - execute query
-                        debug!("Upload: {}", qtext);
-                        let query = Query::new(qtext);
-                        let result = query.execute(&mut client).await;
-
-                        debug!("Result: {:?}", result);
-
-                        if let Err(e) = result {
-                            all_ok = false;
-                            error!("Upload failed: {e}");
-                        } else {
-                            debug!("Upload succesfull!");
-                            let res = result.unwrap();
-                            new_logs += res.total();
-                        }
-                    }
-
-                    // 8 - move files to subdir
-
-                    // 7 - update last_date or report the error
-                    if all_ok {
-                        sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
-                        put_last_date(start_time);
+                // 2 - process_logs
+                let mut processed_logs = Vec::new();
+                for log in &logs {
+                    if let Ok(plog) = CCL5_log_file::Board::load(log) {
+                        processed_logs.push(plog);
                     } else {
-                        sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
-                        error!("Upload failed - not setting new last_date");
+                        error!("Failed to process log: {:?}", log);
                     }
-                } else {
-                    error!("Failed to gather logs!");
                 }
-            } else {
-                error!("Failed to read last_date!");
-            }
 
-            if new_logs > 0 {
-                let delta_t = chrono::Local::now() - start_time;
-                info!(
-                    "Uploaded {new_logs} new results in {}s",
-                    delta_t.num_seconds()
-                );
+                // 3 - uploading in chunks
+                for chunk in processed_logs.chunks(config.get_aoi_chunks()) {
+
+                    // 4 - craft the SQL query
+                    let mut qtext = String::from(
+                        "INSERT INTO [dbo].[AOI_RESULTS] 
+                        ([Barcode], [Lead_DMC], [ShortDMC], [Board], [Side], [Line] [Operator], [Result], [Palette_size], [FileDate], [RowUpdated], [Logfile])
+                        VALUES",
+                    );
+
+                    for board in chunk {
+                        qtext += &format!(
+                                "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
+                                board.serial,
+                                board.serial,
+                                board.short_dmc(),
+                                board.program_id(),
+                                board.side,
+                                config.get_station_name(),
+                                board.user,
+                                board.result,
+                                board.boards_on_panel,
+                                board.date_time,
+                                board.date_time,
+                                board.log.file_name().unwrap().to_string_lossy()
+                            );
+                    }
+                    qtext.pop(); // removes last ','
+
+                    // 5 - execute query
+                    debug!("Upload: {}", qtext);
+                    let query = Query::new(qtext);
+                    let result = query.execute(&mut client).await;
+
+                    debug!("Result: {:?}", result);
+
+                    if let Err(e) = result {
+                        error!("Upload failed: {e}");
+                    } else {
+                        debug!("Upload succesfull!");
+                        // 6 - move files to subdir
+                        todo!();
+                    }
+                }
             }
+            
+
+
+
+
 
             // wait and repeat
             sleep(Duration::from_secs(config.get_aoi_deltat())).await;
@@ -267,7 +242,7 @@ async fn create_connection(
 }
 
 // Return value: Result<(Vec<logfiles>, Vec<pdf_files>)>
-fn get_logs(dir: &Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+fn get_logs(dir: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     let mut ret = Vec::new();
     let mut ret_pdf = Vec::new();
 
@@ -276,19 +251,12 @@ fn get_logs(dir: &Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>, Vec
         let path = file.path();
 
         if path.is_file() {
-            if path.extension().is_some_and(|f| f == "txt") {
-                if let Ok(x) = path.metadata() {
-                    let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
-                    if ct >= last_date {
-                        ret.push(path);
-                    }
-                }
-            } else if path.extension().is_some_and(|f| f == "pdf") {
-                if let Ok(x) = path.metadata() {
-                    let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
-                    if ct >= last_date {
-                        ret_pdf.push(path);
-                    }
+            let file_name = path.filename().unwrap();
+            if file_name.starts_with("V1") {
+                if path.extension().is_some_and(|f| f == "txt") {
+                    ret.push(path);
+                } else if path.extension().is_some_and(|f| f == "pdf") {
+                    ret_pdf.push(path);
                 }
             }
         }
@@ -297,69 +265,13 @@ fn get_logs(dir: &Path, last_date: DateTime<Local>) -> Result<(Vec<PathBuf>, Vec
     Ok((ret, ret_pdf))
 }
 
-fn get_last_date() -> Result<DateTime<Local>> {
-    let last_date = fs::read_to_string("last_date.txt");
+fn move_logs(dest: &Path, logs: (Vec<PathBuf>, Vec<PathBuf>)) -> Result<()> {
 
-    if last_date.is_err() {
-        error!("Error reading last_date.txt!");
-        bail!("Error reading last_date.txt!");
-    }
 
-    let last_date = last_date.unwrap();
-    debug!("Last date: {}", last_date);
-
-    let last_date = chrono::NaiveDateTime::parse_from_str(&last_date, "%Y-%m-%d %H:%M:%S");
-
-    if last_date.is_err() {
-        error!("Error converting last_date!");
-        bail!("Error converting last_date!");
-    }
-
-    let last_date = last_date.unwrap().and_local_timezone(chrono::Local);
-    let last_date = match last_date {
-        chrono::offset::LocalResult::Single(t) => t,
-        chrono::offset::LocalResult::Ambiguous(earliest, _) => earliest,
-        chrono::offset::LocalResult::None => {
-            error!("Error converting last_date! LocalResult::None!");
-            bail!("Error converting last_date! LocalResult::None!");
-        }
-    };
-
-    Ok(last_date)
+    Ok(())
 }
 
-fn put_last_date(end_time: DateTime<Local>) {
-    let output_string = end_time.format("%Y-%m-%d %H:%M:%S").to_string();
-    let _ = fs::write("last_date.txt", output_string);
-}
-/*
-fn get_subdirs_for_aoi(log_dir: &Path, start: &chrono::DateTime<chrono::Local>) -> Vec<PathBuf> {
-    let mut ret = Vec::new();
 
-    let mut start_date = start.date_naive();
-    let end_date = chrono::Local::now().date_naive();
-
-    while start_date <= end_date {
-        debug!("\tdate: {}", start_date);
-
-        let sub_dir = start_date.format("%Y_%m_%d");
-
-        debug!("\tsubdir: {}", sub_dir);
-
-        let new_path = log_dir.join(sub_dir.to_string());
-        debug!("\tfull path: {:?}", new_path);
-
-        if new_path.exists() {
-            debug!("\t\tsubdir exists");
-            ret.push(new_path);
-        }
-
-        start_date = start_date.succ_opt().unwrap();
-    }
-
-    ret
-}
-*/
 #[derive(Debug)]
 pub enum IconCollor {
     Green,
