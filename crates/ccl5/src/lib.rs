@@ -65,6 +65,9 @@ impl Board {
                 match key {
                     "SerialNum" => {
                         serial = value.to_string();
+                        if serial.len() != 24 {
+                            error_and_bail!("Serial reading error! Serial: {}", serial);
+                        }
                     }
                     "Side" => {
                         side = value.to_uppercase();
