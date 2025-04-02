@@ -1,6 +1,7 @@
 use crate::{Window, WindowResult};
 use chrono::NaiveDateTime;
 use log::{debug, error, info};
+use std::collections::HashSet;
 
 // For reading boards back from SQL,
 // where they are not combined into a Panel
@@ -26,6 +27,8 @@ pub struct PseudoErrC {
     pub inspection_plans: Vec<String>,
     pub total_pseudo: Vec<u32>,
     pub total_boards: Vec<u32>,
+    pub failed_boards: Vec<u32>,
+    pub pseudo_per_board: Vec<f32>,
     pub macros: Vec<MacroErrC>,
 }
 
@@ -64,23 +67,30 @@ impl PseudoErrC {
 
         let mut total_pseudo = vec![0; inspection_plans.len()];
         let mut total_boards = vec![0; inspection_plans.len()];
+        let mut failed_boards = vec![0; inspection_plans.len()];
 
         // 2 - iterate over the boards, and search for faulty windows
         let mut macros = Vec::new();
+        let mut barcodes_at_repair: HashSet<(String, usize)> = HashSet::new();
 
         for board in board_data {
             if board.operator.is_empty() {
                 continue;
             } // ignore logs not from the repair station
-            if board.windows.is_empty() {
-                continue;
-            } // ignore logs not containing faults
 
             let inspection_id = inspection_plans
                 .iter()
                 .position(|f| *f == board.inspection_plan)
                 .unwrap(); // can't fail
             total_boards[inspection_id] += 1;
+
+            barcodes_at_repair.insert(&(board.barcode.clone(), inspection_id));
+
+            if board.windows.is_empty() {
+                continue;
+            } // ignore logs not containing faults
+
+            failed_boards[inspection_id] += 1;
 
             for window in &board.windows {
                 if window.result != WindowResult::PseudoError {
@@ -148,10 +158,32 @@ impl PseudoErrC {
             }
         }
 
+        // if a panel contains no errors at all, then it will have no result from the Repair station
+        // to get the correct number of PCBs, we have to check for these too.
+        // We also filter any boards which have no repair result, but have failed windows.
+        // This mainly happens while panels are in the buffer, waiting repair.
+        for board in board_data {
+            let inspection_id = inspection_plans
+            .iter()
+            .position(|f| *f == board.inspection_plan)
+            .unwrap(); // can't fail
+
+            if !barcodes_at_repair.contains(&(board.barcode, inspection_id)) && board.windows.is_empty() {
+                total_boards[inspection_id] += 1;
+            }
+        }
+
+        let mut pseudo_per_board = vec![0.0; inspection_plans.len()];
+        for i in 0..inspection_plans.len() {
+            pseudo_per_board[i] = total_pseudo[i] as f32 / total_boards[i] as f32;
+        }
+
         Self {
             inspection_plans,
             total_pseudo,
             total_boards,
+            failed_boards,
+            pseudo_per_board,
             macros,
         }
     }
