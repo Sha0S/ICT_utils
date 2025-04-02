@@ -372,7 +372,7 @@ impl Config {
                 if let Some(station) = app.get("STATION") {
                     c.station = station.to_owned();
                 } else {
-                    c.station = "Line5".to_string();
+                    c.station = "LINE5".to_string();
                 }
 
                 if let Some(dir) = app.get("DIR") {
@@ -385,10 +385,14 @@ impl Config {
 
                 if let Some(chunks) = app.get("CHUNKS") {
                     c.chunks = chunks.parse().unwrap_or(10);
+                } else {
+                    c.chunks = 10;
                 }
 
                 if let Some(chunks) = app.get("DELTA_T") {
                     c.deltat = chunks.parse().unwrap_or(600);
+                } else {
+                    c.deltat = 600;
                 }
 
                 if c.log_dir.is_empty() || c.dest_dir.is_empty() {
