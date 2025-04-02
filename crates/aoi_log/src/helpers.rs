@@ -1,5 +1,5 @@
 use crate::{Window, WindowResult};
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use log::{debug, error, info};
 use std::collections::HashSet;
 
@@ -18,6 +18,137 @@ pub struct SingleBoard {
     pub operator: String,
 
     pub windows: Vec<Window>,
+}
+
+// For tracking pseudo errors over time
+// Calculates daily/weekly failure rate for the loaded boards
+#[derive(Default)]
+pub struct PseudoErrT {
+    pub inspection_plans: Vec<InspectionErrT>,
+}
+
+#[derive(Default)]
+pub struct InspectionErrT {
+    pub name: String,
+    pub days: Vec<DailyErrT>
+}
+
+#[derive(Default)]
+pub struct DailyErrT {
+    pub date: NaiveDate
+    pub total_boards: u32,
+    pub failed_boards: u32,
+    pub total_pseudo: u32,
+    pub pseudo_per_board: f32,
+}
+
+impl PseudoErrT {
+    pub fn generate(board_data: &[SingleBoard]) -> Self {
+        let mut ret = PseudoErrT::default();
+
+        // tracks which barcode we have already processed for which inspection_plan (barcode, inspection_plan)
+        let mut barcodes_at_repair: HashSet<(String, String)> = HashSet::new();
+
+        for board in board_data {
+            if board.operator.is_empty() {
+                continue;
+            } // ignore logs not from the repair station
+
+            // 1 - check if the inspection_plan already exists, if not create one.
+            let inspection_plan = 
+                if let Some(id) = ret.inspection_plans.iter().position(|f| f.name == baord.inspection_plan) {
+                    &mut ret.inspection_plans[id]
+                } else {
+                    ret.inspection_plans.push(
+                        InspectionErrT { 
+                            name: board.inspection_plan.clone(),
+                            days: Vec::new()
+                        });
+
+                    ret.inspection_plans.last_mut().unwrap()
+                };
+
+            barcodes_at_repair.insert(&(board.barcode.clone(), inspection_plan.clone()));
+            
+            // 2 - check if the date already exist, if not create one
+            let date = board.date_time.date();
+            let day = 
+                if let Some(id) = inspection_plan.days.iter().position(|f| f.date == date) {
+                    &mut inspection_plan.days[id]
+                } else {
+                    inspection_plan.days.push(
+                        DailyErrT { 
+                            date,
+                            total_boards: 0,
+                            failed_boards: 0,
+                            total_pseudo: 0,
+                            pseudo_per_board: 0.0,
+                        });
+
+                    inspection_plan.days.last_mut().unwrap()
+                };
+
+            day.total_boards += 1;
+
+            if board.windows.is_empty() {
+                continue;
+            } // ignore logs not containing faults
+
+            day.failed_boards += 1;
+            
+            for window in &board.windows {
+                if window.result == WindowResult::PseudoError {
+                    day.total_pseudo += 1;
+                } 
+            }
+        }
+
+        // if a panel contains no errors at all, then it will have no result from the Repair station
+        // to get the correct number of PCBs, we have to check for these too.
+        // We also filter any boards which have no repair result, but have failed windows.
+        // This mainly happens while panels are in the buffer, waiting repair.
+        for board in board_data {
+            if !board.operator.is_empty() || !board.windows.is_empty() {
+                continue;
+            } // ignore logs from the repair station and those which have failures
+
+            // 1 - check if the inspection_plan already exists, if not create one.
+            let inspection_plan = 
+                if let Some(id) = ret.inspection_plans.iter().position(|f| f.name == baord.inspection_plan) {
+                    &mut ret.inspection_plans[id]
+                } else {
+                    ret.inspection_plans.push(
+                        InspectionErrT { 
+                            name: board.inspection_plan.clone(),
+                            days: Vec::new()
+                        });
+
+                    ret.inspection_plans.last_mut().unwrap()
+                };
+
+                
+            if !barcodes_at_repair.contains(&(board.barcode.clone(), inspection_plan.clone())) {
+                let date = board.date_time.date();
+                let day = 
+                    if let Some(id) = inspection_plan.days.iter().position(|f| f.date == date) {
+                        &mut inspection_plan.days[id]
+                    } else {
+                        inspection_plan.days.push(
+                            DailyErrT { 
+                                date,
+                                total_boards: 0,
+                                failed_boards: 0,
+                                total_pseudo: 0,
+                                pseudo_per_board: 0.0,
+                            });
+    
+                        inspection_plan.days.last_mut().unwrap()
+                    };
+    
+                day.total_boards += 1;
+            }
+        }
+    }
 }
 
 // Counts pseudo errors for statistics, v2
@@ -163,12 +294,16 @@ impl PseudoErrC {
         // We also filter any boards which have no repair result, but have failed windows.
         // This mainly happens while panels are in the buffer, waiting repair.
         for board in board_data {
+            if !board.operator.is_empty() || !board.windows.is_empty() {
+                continue;
+            } // ignore logs from the repair station and those which have failures
+
             let inspection_id = inspection_plans
             .iter()
             .position(|f| *f == board.inspection_plan)
             .unwrap(); // can't fail
 
-            if !barcodes_at_repair.contains(&(board.barcode, inspection_id)) && board.windows.is_empty() {
+            if !barcodes_at_repair.contains(&(board.barcode, inspection_id)) {
                 total_boards[inspection_id] += 1;
             }
         }
