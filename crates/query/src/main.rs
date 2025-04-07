@@ -651,10 +651,10 @@ impl IctResultApp {
                             let operator = x.get::<&str, usize>(4).unwrap_or_default().to_owned();
                             let date_time = x.get::<NaiveDateTime, usize>(5).unwrap();
 
-                            let station_str = if station == "LINE1" {
-                                format!("CCL {}", side)
+                            let station_str = if station == "-" {
+                                format!("CCL FW {}", side)
                             } else {
-                                format!("CCL-FW {}", side)
+                                format!("CCL {} {}", station, side)
                             };
 
                             panel_lock.lock().unwrap().push(
