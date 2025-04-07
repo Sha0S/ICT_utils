@@ -1,4 +1,7 @@
-use std::{sync::{Arc, Mutex}, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use chrono::NaiveDateTime;
 use egui::{style::ScrollStyle, Layout};
@@ -9,10 +12,10 @@ use tokio::net::TcpStream;
 use tokio_stream::StreamExt;
 use tokio_util::compat::Compat;
 
-use crate::{connection::{check_connection, create_connection}, TimeFrame};
-
-
-
+use crate::{
+    connection::{check_connection, create_connection},
+    TimeFrame,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Status {
@@ -26,13 +29,13 @@ enum Status {
 #[derive(Debug, Default)]
 struct Stations {
     lines: Vec<Line>,
-    products: Vec<Product>
+    products: Vec<Product>,
 }
 
 #[derive(Debug)]
 struct Line {
     name: String,
-    selected: bool
+    selected: bool,
 }
 
 #[derive(Debug)]
@@ -44,28 +47,35 @@ struct Product {
 }
 
 impl Stations {
-    fn push(&mut self, line: String, product: String ) {
+    fn push(&mut self, line: String, product: String) {
         let line = line.to_ascii_uppercase();
-        
+
         let line_number = if let Some(ln) = self.lines.iter().rposition(|f| f.name == line) {
             ln
         } else {
-            self.lines.push(Line { name: line, selected: false });
+            self.lines.push(Line {
+                name: line,
+                selected: false,
+            });
             for product in &mut self.products {
                 product.used_by_line.push(false);
             }
 
-            self.lines.len()-1
+            self.lines.len() - 1
         };
 
         if let Some(pn) = self.products.iter().position(|f| f.name == product) {
             self.products[pn].used_by_line[line_number] = true;
         } else {
-            let mut prod = Product { name: product, selected: false, available_by_selected_lines: true, used_by_line: vec![false; self.lines.len()] };
+            let mut prod = Product {
+                name: product,
+                selected: false,
+                available_by_selected_lines: true,
+                used_by_line: vec![false; self.lines.len()],
+            };
             prod.used_by_line[line_number] = true;
             self.products.push(prod);
         }
-        
     }
 
     fn get_line_selection(&self) -> Vec<bool> {
@@ -99,7 +109,8 @@ impl Stations {
 
 impl Product {
     fn update_availability(&mut self, selected_lines: &[bool]) {
-        if !selected_lines.iter().any(|f| *f) { // if no lines are selected
+        if !selected_lines.iter().any(|f| *f) {
+            // if no lines are selected
             self.available_by_selected_lines = true;
         } else {
             self.available_by_selected_lines = false;
@@ -113,26 +124,34 @@ impl Product {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ActivePanel {
+    PseudoErrors,
+    Timeline,
+}
 
 #[derive(Debug)]
 pub struct AoiStation {
+    active_panel: ActivePanel,
     status: Arc<Mutex<Status>>,
     status_message: Arc<Mutex<String>>,
-
     stations: Arc<Mutex<Stations>>,
 
     boards: Arc<Mutex<Vec<AOI_log_file::helpers::SingleBoard>>>,
     error_counter: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrC>>>,
+    error_daily: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrT>>>,
 }
 
 impl Default for AoiStation {
     fn default() -> Self {
         Self {
+            active_panel: ActivePanel::PseudoErrors,
             status: Arc::new(Mutex::new(Status::UnInitialized)),
             status_message: Arc::new(Mutex::new(String::new())),
             stations: Arc::new(Mutex::new(Stations::default())),
             boards: Arc::new(Mutex::new(Vec::new())),
             error_counter: Arc::new(Mutex::new(None)),
+            error_daily: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -170,18 +189,17 @@ impl AoiStation {
             loop {
                 if client_opt.is_none() {
                     match create_connection().await {
-                        Ok(conn) => {
-                            *client_opt = Some(conn)
-                        }
+                        Ok(conn) => *client_opt = Some(conn),
                         Err(e) => {
                             error!("Initialization FAILED! {}", e);
                             *status.lock().unwrap() = Status::Error;
-                            *message.lock().unwrap() =
-                                format!("Az SQL kapcsolat sikertelen!\n10mp múlva újra próbáljuk!\n{e}");
+                            *message.lock().unwrap() = format!(
+                                "Az SQL kapcsolat sikertelen!\n10mp múlva újra próbáljuk!\n{e}"
+                            );
 
                             tokio::time::sleep(Duration::from_secs(10)).await;
                             continue;
-                        }   
+                        }
                     }
                 }
 
@@ -196,7 +214,7 @@ impl AoiStation {
                 }
             }
 
-            let client= client_opt.as_mut().unwrap();
+            let client = client_opt.as_mut().unwrap();
 
             let query = Query::new(
                 "SELECT Station, Program
@@ -260,13 +278,14 @@ impl AoiStation {
         *self.error_counter.lock().unwrap() = None;
         let error_counter = self.error_counter.clone();
 
+        *self.error_daily.lock().unwrap() = None;
+        let error_daily = self.error_daily.clone();
+
         let stations = self.stations.lock().unwrap();
 
         let lines = stations.get_selected_lines();
 
         let programs = stations.get_selected_products();
-
-
 
         let start_datetime = timeframe
             .0
@@ -289,18 +308,17 @@ impl AoiStation {
             loop {
                 if client_opt.is_none() {
                     match create_connection().await {
-                        Ok(conn) => {
-                            *client_opt = Some(conn)
-                        }
+                        Ok(conn) => *client_opt = Some(conn),
                         Err(e) => {
                             error!("Connection FAILED! {}", e);
                             *status.lock().unwrap() = Status::Error;
-                            *message.lock().unwrap() =
-                                format!("Az SQL kapcsolat sikertelen!\n10mp múlva újra próbáljuk!\n{e}");
+                            *message.lock().unwrap() = format!(
+                                "Az SQL kapcsolat sikertelen!\n10mp múlva újra próbáljuk!\n{e}"
+                            );
 
                             tokio::time::sleep(Duration::from_secs(10)).await;
                             continue;
-                        }   
+                        }
                     }
                 }
 
@@ -337,15 +355,22 @@ impl AoiStation {
             );
 
             if !lines.is_empty() {
-                let x = lines.iter().map(|f| format!("'{}'", f)).collect::<Vec<String>>().join(", ");
+                let x = lines
+                    .iter()
+                    .map(|f| format!("'{}'", f))
+                    .collect::<Vec<String>>()
+                    .join(", ");
                 query_text += &format!("Station IN ({x}) AND ");
             }
 
             if !programs.is_empty() {
-                let x = programs.iter().map(|f| format!("'{}'", f)).collect::<Vec<String>>().join(", ");
+                let x = programs
+                    .iter()
+                    .map(|f| format!("'{}'", f))
+                    .collect::<Vec<String>>()
+                    .join(", ");
                 query_text += &format!("Program IN ({x}) AND ");
             }
-
 
             if let Some(et) = end_datetime {
                 query_text += &format!(
@@ -378,16 +403,19 @@ impl AoiStation {
                             let data = x.get::<&str, usize>(7).unwrap().to_owned();
 
                             // Populating stations/products/variants structs
-                            boards.lock().unwrap().push(AOI_log_file::helpers::SingleBoard {
-                                barcode,
-                                result: result_text == "Pass",
-                                inspection_plan,
-                                variant,
-                                station,
-                                date_time,
-                                operator,
-                                windows: serde_json::from_str(&data).unwrap(),
-                            });
+                            boards
+                                .lock()
+                                .unwrap()
+                                .push(AOI_log_file::helpers::SingleBoard {
+                                    barcode,
+                                    result: result_text == "Pass",
+                                    inspection_plan,
+                                    variant,
+                                    station,
+                                    date_time,
+                                    operator,
+                                    windows: serde_json::from_str(&data).unwrap(),
+                                });
                         }
                         tiberius::QueryItem::Metadata(_) => (),
                     }
@@ -398,9 +426,14 @@ impl AoiStation {
                 *message.lock().unwrap() =
                     format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
 
-                let mut counter = AOI_log_file::helpers::PseudoErrC::generate(&boards.lock().unwrap());
+                let mut counter =
+                    AOI_log_file::helpers::PseudoErrC::generate(&boards.lock().unwrap());
                 counter.sort_by_ip_id(None);
                 *error_counter.lock().unwrap() = Some(counter);
+
+                let daily = AOI_log_file::helpers::PseudoErrT::generate(&boards.lock().unwrap());
+                println!("{:?}", daily);
+                *error_daily.lock().unwrap() = Some(daily);
 
                 *status.lock().unwrap() = Status::Standby;
             } else {
@@ -425,7 +458,6 @@ impl AoiStation {
             return;
         }
 
-        
         let mut stations = self.stations.lock().unwrap();
         let mut stations_changed = false;
 
@@ -439,7 +471,9 @@ impl AoiStation {
 
         let station_update = if stations_changed {
             Some(stations.get_line_selection())
-        } else {None};
+        } else {
+            None
+        };
 
         ui.separator();
 
@@ -455,9 +489,7 @@ impl AoiStation {
             }
         }
 
-        
         drop(stations);
-
 
         ui.add_space(10.0);
 
@@ -470,7 +502,7 @@ impl AoiStation {
 
     pub fn central_panel(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
-        ui.visuals_mut().collapsing_header_frame = true;     
+        ui.visuals_mut().collapsing_header_frame = true;
 
         if *self.status.lock().unwrap() != Status::Standby {
             ui.vertical_centered(|ui| {
@@ -481,96 +513,178 @@ impl AoiStation {
 
             return;
         }
+        ui.horizontal(|ui| {
+            if ui.button("Pszeudóhibák").clicked() {
+                self.active_panel = ActivePanel::PseudoErrors;
+            }
 
-        if let Some(counter) = self.error_counter.lock().unwrap().as_mut() {
-            let mut sort_after = None;
+            if ui.button("Idő").clicked() {
+                self.active_panel = ActivePanel::Timeline;
+            }
+        });
 
-            TableBuilder::new(ui)
-            .striped(true)
-            .cell_layout(Layout::from_main_dir_and_cross_align(egui::Direction::LeftToRight, egui::Align::Center))
-            .column(Column::auto().at_least(200.0))
-            .columns(Column::auto(), counter.inspection_plans.len())
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    ui.label("Macros");
-                });
-                for (i,iplan) in counter.inspection_plans.iter().enumerate() {
-                    header.col(|ui| {
-                        ui.vertical(|ui| {
-                            if ui.label(iplan).clicked() {
-                                sort_after = Some(i);
-                            }
-                            ui.label(format!("{} pcb", counter.total_boards[i]));
-                            ui.label(counter.total_pseudo[i].to_string());
+        ui.separator();
+
+        if self.active_panel == ActivePanel::PseudoErrors {
+            if let Some(counter) = self.error_counter.lock().unwrap().as_mut() {
+                let mut sort_after = None;
+
+                TableBuilder::new(ui).id_salt("Pszeudo")
+                    .striped(true)
+                    .cell_layout(Layout::from_main_dir_and_cross_align(
+                        egui::Direction::LeftToRight,
+                        egui::Align::Center,
+                    ))
+                    .column(Column::auto().at_least(200.0))
+                    .columns(
+                        Column::auto().resizable(true),
+                        counter.inspection_plans.len(),
+                    )
+                    .header(20.0, |mut header| {
+                        header.col(|ui| {
+                            ui.label("Macros");
                         });
-                        ui.add_space(10.0);
-                    });
-                }
-
-            })
-            .body(|mut body| {
-                
-
-                for macroc in &mut counter.macros {
-                    body.row(20.0, |mut row| {
-                        row.col(|ui| {
-                                colapsing_button(ui, &mut macroc.show);
-                                ui.label(&macroc.name);                            
-                        });
-                        for iplanc in &macroc.total_pseudo {
-                            row.col(|ui| {
-                                    ui.label(iplanc.to_string());
+                        for (i, iplan) in counter.inspection_plans.iter().enumerate() {
+                            header.col(|ui| {
+                                ui.vertical(|ui| {
+                                    if ui.label(iplan).clicked() {
+                                        sort_after = Some(i);
+                                    }
+                                    ui.label(format!(
+                                        "{} / {} pcb",
+                                        counter.failed_boards[i], counter.total_boards[i]
+                                    ));
+                                    ui.label(format!(
+                                        "{} ({:.2} avg)",
+                                        counter.total_pseudo[i], counter.pseudo_per_board[i]
+                                    ));
+                                });
+                                ui.add_space(10.0);
                             });
                         }
-
-                    });
-
-                    if macroc.show {
-                        for package in &mut macroc.packages {
+                    })
+                    .body(|mut body| {
+                        for macroc in &mut counter.macros {
                             body.row(20.0, |mut row| {
                                 row.col(|ui| {
-                                        ui.add_space(20.0);
-                                        colapsing_button(ui, &mut package.show);
-                                        ui.label(&package.name);
+                                    colapsing_button(ui, &mut macroc.show);
+                                    ui.label(&macroc.name);
                                 });
-                                for iplanc in &package.total_pseudo {
+                                for iplanc in &macroc.total_pseudo {
                                     row.col(|ui| {
-                                            ui.label(iplanc.to_string());
+                                        ui.label(iplanc.to_string());
                                     });
                                 }
                             });
 
-                            if package.show {
-                                for position in &package.positions {
+                            if macroc.show {
+                                for package in &mut macroc.packages {
                                     body.row(20.0, |mut row| {
                                         row.col(|ui| {
-                                                ui.add_space(60.0);
-                                                ui.label(&position.name);
+                                            ui.add_space(20.0);
+                                            colapsing_button(ui, &mut package.show);
+                                            ui.label(&package.name);
                                         });
-                                        for iplanc in &position.total_pseudo {
+                                        for iplanc in &package.total_pseudo {
                                             row.col(|ui| {
-                                                    ui.label(iplanc.to_string());
+                                                ui.label(iplanc.to_string());
                                             });
                                         }
                                     });
+
+                                    if package.show {
+                                        for position in &package.positions {
+                                            body.row(20.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.add_space(60.0);
+                                                    ui.label(&position.name);
+                                                });
+                                                for iplanc in &position.total_pseudo {
+                                                    row.col(|ui| {
+                                                        ui.label(iplanc.to_string());
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-            });
+                    });
 
-            if let Some(i) = sort_after {
-                counter.sort_by_ip_id(Some(i));
+                if let Some(i) = sort_after {
+                    counter.sort_by_ip_id(Some(i));
+                }
+            }
+        } else if self.active_panel == ActivePanel::Timeline {
+            if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
+                egui::ScrollArea::both()
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .show(ui,|ui| {
+                    for inspection_plan in &daily.inspection_plans {
+                        ui.add_space(20.0);
+                        ui.label(&inspection_plan.name);
+
+                        TableBuilder::new(ui).id_salt(&inspection_plan.name)
+                            .striped(true)
+                            .cell_layout(Layout::from_main_dir_and_cross_align(
+                                egui::Direction::LeftToRight,
+                                egui::Align::Center,
+                            ))
+                            .column(Column::auto().at_least(100.0))
+                            .columns(Column::auto(), inspection_plan.days.len())
+                            .header(20.0, |mut header| {
+                                header.col(|ui| {});
+                                for day in inspection_plan.days.iter() {
+                                    header.col(|ui| {
+                                        ui.label(day.date.format("%m. %d.").to_string());
+                                    });
+                                }
+                            })
+                            .body(|mut body| {
+                                body.row(20.0, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label("Összes pcb");
+                                    });
+
+                                    for day in inspection_plan.days.iter() {
+                                        row.col(|ui| {
+                                            ui.label(day.total_boards.to_string());
+                                        });
+                                    }
+                                });
+                                body.row(20.0, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label("Kieső pcb");
+                                    });
+
+                                    for day in inspection_plan.days.iter() {
+                                        row.col(|ui| {
+                                            ui.label(day.failed_boards.to_string());
+                                        });
+                                    }
+                                });
+                                body.row(20.0, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label("Pszeudó hiba átlag");
+                                    });
+
+                                    for day in inspection_plan.days.iter() {
+                                        row.col(|ui| {
+                                            ui.label(format!("{:.2}",day.pseudo_per_board));
+                                        });
+                                    }
+                                });
+                            });
+                    }
+                });
             }
         }
     }
 }
 
 fn colapsing_button(ui: &mut egui::Ui, b: &mut bool) {
-    if ui.button(
-        if *b {"V"} else {">"}
-    ).clicked() {
+    if ui.button(if *b { "V" } else { ">" }).clicked() {
         *b = !*b;
     }
 }

@@ -1,5 +1,5 @@
 use crate::{Window, WindowResult};
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use log::{debug, error, info};
 use std::collections::HashSet;
 
@@ -22,18 +22,19 @@ pub struct SingleBoard {
 
 // For tracking pseudo errors over time
 // Calculates daily/weekly failure rate for the loaded boards
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PseudoErrT {
     pub inspection_plans: Vec<InspectionErrT>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct InspectionErrT {
     pub name: String,
     pub days: Vec<DailyErrT>,
+    pub weeks: Vec<WeeklyErrT>
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct DailyErrT {
     pub date: NaiveDate,
     pub total_boards: u32,
@@ -41,6 +42,16 @@ pub struct DailyErrT {
     pub total_pseudo: u32,
     pub pseudo_per_board: f32,
 }
+
+#[derive(Default, Clone, Debug)]
+pub struct WeeklyErrT {
+    pub week: u32,
+    pub total_boards: u32,
+    pub failed_boards: u32,
+    pub total_pseudo: u32,
+    pub pseudo_per_board: f32,
+}
+
 
 impl PseudoErrT {
     pub fn generate(board_data: &[SingleBoard]) -> Self {
@@ -65,6 +76,7 @@ impl PseudoErrT {
                 ret.inspection_plans.push(InspectionErrT {
                     name: board.inspection_plan.clone(),
                     days: Vec::new(),
+                    weeks: Vec::new(),
                 });
 
                 ret.inspection_plans.last_mut().unwrap()
@@ -123,6 +135,7 @@ impl PseudoErrT {
                 ret.inspection_plans.push(InspectionErrT {
                     name: board.inspection_plan.clone(),
                     days: Vec::new(),
+                    weeks: Vec::new()
                 });
 
                 ret.inspection_plans.last_mut().unwrap()
@@ -147,6 +160,23 @@ impl PseudoErrT {
                 };
 
                 day.total_boards += 1;
+            }
+        }
+
+        for ip in &mut ret.inspection_plans {
+            ip.days.sort_by_key(|f| f.date);
+
+            for day in &mut ip.days {
+                day.pseudo_per_board = day.total_pseudo as f32 / day.total_boards as f32;
+            }
+        }
+
+        // Pupulate weekly stats
+        for ip in &mut ret.inspection_plans {
+            for day in &mut ip.days {
+                let week = day.date.iso_week().week();
+
+                
             }
         }
 
