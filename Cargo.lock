@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "SMT_utils"
-version = "2.11.2"
+version = "2.11.3"
 dependencies = [
  "AOI_log_file",
  "CCL5_log_file",
