@@ -1,4 +1,4 @@
-app-icon ICON "./icons/ict.ico"
+app-icon ICON "./icons/v2.ico"
 green-icon ICON "./icons/green.ico"
 red-icon ICON "./icons/red.ico"
 yellow-icon ICON "./icons/yellow.ico"
