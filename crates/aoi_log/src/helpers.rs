@@ -45,6 +45,7 @@ pub struct DailyErrT {
 
 #[derive(Default, Clone, Debug)]
 pub struct WeeklyErrT {
+    pub year: i32,
     pub week: u32,
     pub total_boards: u32,
     pub failed_boards: u32,
@@ -174,9 +175,40 @@ impl PseudoErrT {
         // Pupulate weekly stats
         for ip in &mut ret.inspection_plans {
             for day in &mut ip.days {
-                let week = day.date.iso_week().week();
+                let year = day.date.year();
+                let week_number = day.date.iso_week().week();
 
-                
+                let week = if let Some(i)  = ip.weeks.iter().position(|f| f.year == year && f.week == week_number)
+                {
+                    &mut ip.weeks[i]
+                } else {
+                    ip.weeks.push(WeeklyErrT {
+                        year,
+                        week: week_number,
+                        total_boards: 0,
+                        failed_boards: 0,
+                        total_pseudo: 0,
+                        pseudo_per_board: 0.0,
+                    });
+
+                    ip.weeks.last_mut().unwrap()
+                };
+
+                week.total_boards += day.total_boards;
+                week.failed_boards += day.failed_boards;
+                week.total_pseudo += day.total_pseudo;
+            }
+
+            ip.weeks.sort_by(|a,b| 
+                if a.year == b.year {
+                    a.week.cmp(&b.week)
+                } else {
+                    a.year.cmp(&b.year)
+                }
+            );
+
+            for week in &mut ip.weeks {
+                week.pseudo_per_board = week.total_pseudo as f32 / week.total_boards as f32;
             }
         }
 
