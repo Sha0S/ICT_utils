@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::NaiveDateTime;
-use egui::{style::ScrollStyle, Layout};
+use egui::{style::ScrollStyle, Color32, Layout, RichText};
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error, info};
 use tiberius::{Client, Query};
@@ -532,7 +532,8 @@ impl AoiStation {
             if let Some(counter) = self.error_counter.lock().unwrap().as_mut() {
                 let mut sort_after = None;
 
-                TableBuilder::new(ui).id_salt("Pszeudo")
+                TableBuilder::new(ui)
+                    .id_salt("Pszeudo")
                     .striped(true)
                     .cell_layout(Layout::from_main_dir_and_cross_align(
                         egui::Direction::LeftToRight,
@@ -620,97 +621,199 @@ impl AoiStation {
                 }
             }
         } else if self.active_panel == ActivePanel::Timeline {
-            if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
+
+            // This uses a lot of duplicated code, could try to simplify it later
+            // would potentially need to implement Traits for day/week structs.
+
+            if self.daily {
+                if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
+                    ui.checkbox(&mut self.daily, "Napi kimutatás");
+
+                    egui::ScrollArea::both()
+                        .scroll_bar_visibility(
+                            egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                        )
+                        .show(ui, |ui| {
+                            for inspection_plan in &daily.inspection_plans {
+                                ui.add_space(20.0);
+                                ui.label(&inspection_plan.name);
+
+                                TableBuilder::new(ui)
+                                    .id_salt(&inspection_plan.name)
+                                    .striped(true)
+                                    .cell_layout(Layout::from_main_dir_and_cross_align(
+                                        egui::Direction::LeftToRight,
+                                        egui::Align::Center,
+                                    ))
+                                    .column(Column::auto().at_least(100.0))
+                                    .columns(Column::auto(), inspection_plan.days.len())
+                                    .header(20.0, |mut header| {
+                                        header.col(|_ui| {});
+                                        for day in inspection_plan.days.iter() {
+                                            header.col(|ui| {
+                                                ui.label(day.date.format("%m. %d.").to_string());
+                                            });
+                                        }
+                                    })
+                                    .body(|mut body| {
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.label("Összes pcb");
+                                            });
+
+                                            for day in inspection_plan.days.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(day.total_boards.to_string());
+                                                });
+                                            }
+                                        });
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.label("Kieső pcb");
+                                            });
+
+                                            for day in inspection_plan.days.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(day.failed_boards.to_string());
+                                                });
+                                            }
+                                        });
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.label("Pszeudó hiba átlag");
+                                            });
+
+                                            for day in inspection_plan.days.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(format!(
+                                                        "{:.2}",
+                                                        day.pseudo_per_board
+                                                    ));
+                                                });
+                                            }
+                                        });
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.label("Delta");
+                                            });
+
+                                            let mut yesterday = None;
+
+                                            for day in inspection_plan.days.iter() {
+                                                row.col(|ui| {
+                                                    if let Some(i) = yesterday {
+                                                        let delta = day.pseudo_per_board - i;
+
+                                                        ui.label(
+                                                            RichText::new(format!("{:+.2}", delta))
+                                                                .color(if delta > 0.0 {
+                                                                    Color32::RED
+                                                                } else {
+                                                                    Color32::GREEN
+                                                                }),
+                                                        );
+                                                    }
+
+                                                    yesterday = Some(day.pseudo_per_board);
+                                                });
+                                            }
+                                        });
+                                    });
+                            }
+                        });
+                }
+            } else if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
                 ui.checkbox(&mut self.daily, "Napi kimutatás");
 
                 egui::ScrollArea::both()
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
-                .show(ui,|ui| {
-                    for inspection_plan in &daily.inspection_plans {
-                        ui.add_space(20.0);
-                        ui.label(&inspection_plan.name);
+                    .scroll_bar_visibility(
+                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    )
+                    .show(ui, |ui| {
+                        for inspection_plan in &daily.inspection_plans {
+                            ui.add_space(20.0);
+                            ui.label(&inspection_plan.name);
 
-                        TableBuilder::new(ui).id_salt(&inspection_plan.name)
-                            .striped(true)
-                            .cell_layout(Layout::from_main_dir_and_cross_align(
-                                egui::Direction::LeftToRight,
-                                egui::Align::Center,
-                            ))
-                            .column(Column::auto().at_least(100.0))
-                            .columns(Column::auto(), inspection_plan.days.len())
-                            .header(20.0, |mut header| {
-                                header.col(|ui| {});
-                                for day in inspection_plan.days.iter() {
-                                    header.col(|ui| {
-                                        ui.label(day.date.format("%m. %d.").to_string());
-                                    });
-                                }
-                            })
-                            .body(|mut body| {
-                                body.row(20.0, |mut row| {
-                                    row.col(|ui| {
-                                        ui.label("Összes pcb");
-                                    });
-
-                                    for day in inspection_plan.days.iter() {
-                                        row.col(|ui| {
-                                            ui.label(day.total_boards.to_string());
+                            TableBuilder::new(ui)
+                                .id_salt(&inspection_plan.name)
+                                .striped(true)
+                                .cell_layout(Layout::from_main_dir_and_cross_align(
+                                    egui::Direction::LeftToRight,
+                                    egui::Align::Center,
+                                ))
+                                .column(Column::auto().at_least(100.0))
+                                .columns(Column::auto(), inspection_plan.weeks.len())
+                                .header(20.0, |mut header| {
+                                    header.col(|_ui| {});
+                                    for week in inspection_plan.weeks.iter() {
+                                        header.col(|ui| {
+                                            ui.label(format!("{}. wk{}", week.year, week.week));
                                         });
                                     }
-                                });
-                                body.row(20.0, |mut row| {
-                                    row.col(|ui| {
-                                        ui.label("Kieső pcb");
-                                    });
-
-                                    for day in inspection_plan.days.iter() {
+                                })
+                                .body(|mut body| {
+                                    body.row(20.0, |mut row| {
                                         row.col(|ui| {
-                                            ui.label(day.failed_boards.to_string());
+                                            ui.label("Összes pcb");
                                         });
-                                    }
-                                });
-                                body.row(20.0, |mut row| {
-                                    row.col(|ui| {
-                                        ui.label("Pszeudó hiba átlag");
+
+                                        for week in inspection_plan.weeks.iter() {
+                                            row.col(|ui| {
+                                                ui.label(week.total_boards.to_string());
+                                            });
+                                        }
                                     });
-
-                                    for day in inspection_plan.days.iter() {
+                                    body.row(20.0, |mut row| {
                                         row.col(|ui| {
-                                            ui.label(format!("{:.2}",day.pseudo_per_board));
+                                            ui.label("Kieső pcb");
                                         });
-                                    }
-                                });
-                                body.row(20.0, |mut row| {
-                                    row.col(|ui| {
-                                        ui.label("Delta");
+
+                                        for week in inspection_plan.weeks.iter() {
+                                            row.col(|ui| {
+                                                ui.label(week.failed_boards.to_string());
+                                            });
+                                        }
                                     });
-
-                                    let mut yesterday = None;
-
-                                    for day in inspection_plan.days.iter() {
+                                    body.row(20.0, |mut row| {
                                         row.col(|ui| {
-                                            if let Some(i) = yesterday {
-                                                let delta = day.pseudo_per_board - i;
-
-                                                ui.label(
-                                                    RichText::new(format!("{:.2}",delta))
-                                                    .color(
-                                                        if delta > 0 {
-                                                            Color32::RED
-                                                        } else {
-                                                            Color32::GREEN
-                                                        }        
-                                                    )
-                                                );
-                                            }
-
-                                            yesterday = Some(day.pseudo_per_board);
+                                            ui.label("Pszeudó hiba átlag");
                                         });
-                                    }
+
+                                        for week in inspection_plan.weeks.iter() {
+                                            row.col(|ui| {
+                                                ui.label(format!("{:.2}", week.pseudo_per_board));
+                                            });
+                                        }
+                                    });
+                                    body.row(20.0, |mut row| {
+                                        row.col(|ui| {
+                                            ui.label("Delta");
+                                        });
+
+                                        let mut last_week = None;
+
+                                        for week in inspection_plan.weeks.iter() {
+                                            row.col(|ui| {
+                                                if let Some(i) = last_week {
+                                                    let delta = week.pseudo_per_board - i;
+
+                                                    ui.label(
+                                                        RichText::new(format!("{:+.2}", delta))
+                                                            .color(if delta > 0.0 {
+                                                                Color32::RED
+                                                            } else {
+                                                                Color32::GREEN
+                                                            }),
+                                                    );
+                                                }
+
+                                                last_week = Some(week.pseudo_per_board);
+                                            });
+                                        }
+                                    });
                                 });
-                            });
-                    }
-                });
+                        }
+                    });
             }
         }
     }
