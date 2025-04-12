@@ -137,6 +137,8 @@ pub struct AoiStation {
     status_message: Arc<Mutex<String>>,
     stations: Arc<Mutex<Stations>>,
 
+    daily: bool,
+
     boards: Arc<Mutex<Vec<AOI_log_file::helpers::SingleBoard>>>,
     error_counter: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrC>>>,
     error_daily: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrT>>>,
@@ -149,6 +151,7 @@ impl Default for AoiStation {
             status: Arc::new(Mutex::new(Status::UnInitialized)),
             status_message: Arc::new(Mutex::new(String::new())),
             stations: Arc::new(Mutex::new(Stations::default())),
+            daily: false,
             boards: Arc::new(Mutex::new(Vec::new())),
             error_counter: Arc::new(Mutex::new(None)),
             error_daily: Arc::new(Mutex::new(None)),
@@ -618,6 +621,8 @@ impl AoiStation {
             }
         } else if self.active_panel == ActivePanel::Timeline {
             if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
+                ui.checkbox(&mut self.daily, "Napi kimutatás");
+
                 egui::ScrollArea::both()
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                 .show(ui,|ui| {
@@ -672,6 +677,34 @@ impl AoiStation {
                                     for day in inspection_plan.days.iter() {
                                         row.col(|ui| {
                                             ui.label(format!("{:.2}",day.pseudo_per_board));
+                                        });
+                                    }
+                                });
+                                body.row(20.0, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label("Delta");
+                                    });
+
+                                    let mut yesterday = None;
+
+                                    for day in inspection_plan.days.iter() {
+                                        row.col(|ui| {
+                                            if let Some(i) = yesterday {
+                                                let delta = day.pseudo_per_board - i;
+
+                                                ui.label(
+                                                    RichText::new(format!("{:.2}",delta))
+                                                    .color(
+                                                        if delta > 0 {
+                                                            Color32::RED
+                                                        } else {
+                                                            Color32::GREEN
+                                                        }        
+                                                    )
+                                                );
+                                            }
+
+                                            yesterday = Some(day.pseudo_per_board);
                                         });
                                     }
                                 });
