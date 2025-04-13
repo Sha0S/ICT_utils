@@ -621,19 +621,17 @@ impl AoiStation {
                 }
             }
         } else if self.active_panel == ActivePanel::Timeline {
-
             // This uses a lot of duplicated code, could try to simplify it later
             // would potentially need to implement Traits for day/week structs.
-
-            if self.daily {
-                if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
-                    ui.checkbox(&mut self.daily, "Napi kimutatás");
-
-                    egui::ScrollArea::both()
-                        .scroll_bar_visibility(
-                            egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
-                        )
-                        .show(ui, |ui| {
+            
+            if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
+                ui.checkbox(&mut self.daily, "Napi kimutatás");
+                egui::ScrollArea::both()
+                    .scroll_bar_visibility(
+                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    )
+                    .show(ui, |ui| {
+                        if self.daily {
                             for inspection_plan in &daily.inspection_plans {
                                 ui.add_space(20.0);
                                 ui.label(&inspection_plan.name);
@@ -720,98 +718,93 @@ impl AoiStation {
                                         });
                                     });
                             }
-                        });
-                }
-            } else if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
-                ui.checkbox(&mut self.daily, "Napi kimutatás");
+                        } else {
+                            for inspection_plan in &daily.inspection_plans {
+                                ui.add_space(20.0);
+                                ui.label(&inspection_plan.name);
 
-                egui::ScrollArea::both()
-                    .scroll_bar_visibility(
-                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
-                    )
-                    .show(ui, |ui| {
-                        for inspection_plan in &daily.inspection_plans {
-                            ui.add_space(20.0);
-                            ui.label(&inspection_plan.name);
-
-                            TableBuilder::new(ui)
-                                .id_salt(&inspection_plan.name)
-                                .striped(true)
-                                .cell_layout(Layout::from_main_dir_and_cross_align(
-                                    egui::Direction::LeftToRight,
-                                    egui::Align::Center,
-                                ))
-                                .column(Column::auto().at_least(100.0))
-                                .columns(Column::auto(), inspection_plan.weeks.len())
-                                .header(20.0, |mut header| {
-                                    header.col(|_ui| {});
-                                    for week in inspection_plan.weeks.iter() {
-                                        header.col(|ui| {
-                                            ui.label(format!("{}. wk{}", week.year, week.week));
-                                        });
-                                    }
-                                })
-                                .body(|mut body| {
-                                    body.row(20.0, |mut row| {
-                                        row.col(|ui| {
-                                            ui.label("Összes pcb");
-                                        });
-
+                                TableBuilder::new(ui)
+                                    .id_salt(&inspection_plan.name)
+                                    .striped(true)
+                                    .cell_layout(Layout::from_main_dir_and_cross_align(
+                                        egui::Direction::LeftToRight,
+                                        egui::Align::Center,
+                                    ))
+                                    .column(Column::auto().at_least(100.0))
+                                    .columns(Column::auto(), inspection_plan.weeks.len())
+                                    .header(20.0, |mut header| {
+                                        header.col(|_ui| {});
                                         for week in inspection_plan.weeks.iter() {
-                                            row.col(|ui| {
-                                                ui.label(week.total_boards.to_string());
+                                            header.col(|ui| {
+                                                ui.label(format!("{}. wk{}", week.year, week.week));
                                             });
                                         }
-                                    });
-                                    body.row(20.0, |mut row| {
-                                        row.col(|ui| {
-                                            ui.label("Kieső pcb");
-                                        });
-
-                                        for week in inspection_plan.weeks.iter() {
+                                    })
+                                    .body(|mut body| {
+                                        body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                ui.label(week.failed_boards.to_string());
+                                                ui.label("Összes pcb");
                                             });
-                                        }
-                                    });
-                                    body.row(20.0, |mut row| {
-                                        row.col(|ui| {
-                                            ui.label("Pszeudó hiba átlag");
+
+                                            for week in inspection_plan.weeks.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(week.total_boards.to_string());
+                                                });
+                                            }
                                         });
-
-                                        for week in inspection_plan.weeks.iter() {
+                                        body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                ui.label(format!("{:.2}", week.pseudo_per_board));
+                                                ui.label("Kieső pcb");
                                             });
-                                        }
-                                    });
-                                    body.row(20.0, |mut row| {
-                                        row.col(|ui| {
-                                            ui.label("Delta");
+
+                                            for week in inspection_plan.weeks.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(week.failed_boards.to_string());
+                                                });
+                                            }
                                         });
-
-                                        let mut last_week = None;
-
-                                        for week in inspection_plan.weeks.iter() {
+                                        body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                if let Some(i) = last_week {
-                                                    let delta = week.pseudo_per_board - i;
-
-                                                    ui.label(
-                                                        RichText::new(format!("{:+.2}", delta))
-                                                            .color(if delta > 0.0 {
-                                                                Color32::RED
-                                                            } else {
-                                                                Color32::GREEN
-                                                            }),
-                                                    );
-                                                }
-
-                                                last_week = Some(week.pseudo_per_board);
+                                                ui.label("Pszeudó hiba átlag");
                                             });
-                                        }
+
+                                            for week in inspection_plan.weeks.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(format!(
+                                                        "{:.2}",
+                                                        week.pseudo_per_board
+                                                    ));
+                                                });
+                                            }
+                                        });
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.label("Delta");
+                                            });
+
+                                            let mut last_week = None;
+
+                                            for week in inspection_plan.weeks.iter() {
+                                                row.col(|ui| {
+                                                    if let Some(i) = last_week {
+                                                        let delta = week.pseudo_per_board - i;
+
+                                                        ui.label(
+                                                            RichText::new(format!("{:+.2}", delta))
+                                                                .color(if delta > 0.0 {
+                                                                    Color32::RED
+                                                                } else {
+                                                                    Color32::GREEN
+                                                                }),
+                                                        );
+                                                    }
+
+                                                    last_week = Some(week.pseudo_per_board);
+                                                });
+                                            }
+                                        });
                                     });
-                                });
+                            }
                         }
                     });
             }
