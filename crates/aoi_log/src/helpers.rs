@@ -212,6 +212,8 @@ impl PseudoErrT {
             }
         }
 
+        ret.inspection_plans.sort_by(|a,b | a.name.cmp(&b.name));
+
         ret
     }
 }
@@ -260,6 +262,8 @@ impl PseudoErrC {
                 inspection_plans.push(board.inspection_plan.clone());
             }
         }
+
+        inspection_plans.sort();
 
         let mut total_pseudo = vec![0; inspection_plans.len()];
         let mut total_boards = vec![0; inspection_plans.len()];

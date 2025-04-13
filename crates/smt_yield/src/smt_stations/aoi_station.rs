@@ -78,6 +78,10 @@ impl Stations {
         }
     }
 
+    fn sort(&mut self) {
+        self.products.sort_by(|a,b| a.name.cmp(&b.name));
+    }
+
     fn get_line_selection(&self) -> Vec<bool> {
         self.lines.iter().map(|f| f.selected).collect()
     }
@@ -242,6 +246,8 @@ impl AoiStation {
                         tiberius::QueryItem::Metadata(_) => (),
                     }
                 }
+
+                stations.lock().unwrap().sort();
 
                 info!("Initialization OK!");
                 *status.lock().unwrap() = Status::Standby;
@@ -431,6 +437,7 @@ impl AoiStation {
 
                 let mut counter =
                     AOI_log_file::helpers::PseudoErrC::generate(&boards.lock().unwrap());
+                
                 counter.sort_by_ip_id(None);
                 *error_counter.lock().unwrap() = Some(counter);
 
