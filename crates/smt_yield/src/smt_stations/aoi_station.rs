@@ -480,17 +480,19 @@ impl AoiStation {
 
         ui.separator();
 
-        for product in &mut stations.products {
-            if let Some(line_sel) = &station_update {
-                product.update_availability(line_sel);
-            }
+        egui::ScrollArea::vertical().show(ui, |ui|{
+            for product in &mut stations.products {
+                if let Some(line_sel) = &station_update {
+                    product.update_availability(line_sel);
+                }
 
-            if product.available_by_selected_lines {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut product.selected, &product.name);
-                });
+                if product.available_by_selected_lines {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut product.selected, &product.name);
+                    });
+                }
             }
-        }
+        });
 
         drop(stations);
 
@@ -623,7 +625,7 @@ impl AoiStation {
         } else if self.active_panel == ActivePanel::Timeline {
             // This uses a lot of duplicated code, could try to simplify it later
             // would potentially need to implement Traits for day/week structs.
-            
+
             if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
                 ui.checkbox(&mut self.daily, "Napi kimutatás");
                 egui::ScrollArea::both()
@@ -736,7 +738,7 @@ impl AoiStation {
                                         header.col(|_ui| {});
                                         for week in inspection_plan.weeks.iter() {
                                             header.col(|ui| {
-                                                ui.label(format!("{}. wk{}", week.year, week.week));
+                                                ui.label(format!("wk{}", week.week));
                                             });
                                         }
                                     })
