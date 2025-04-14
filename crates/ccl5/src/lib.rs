@@ -21,7 +21,7 @@ SerialNum= V102508400582DB828853020
  -> ShortDMC: V102508400582D
  -> Barcode, Lead_DMC (?)
  -> Board: B828853 + SIDE (_TOP, _BOT)
-Side=      Top
+Recipe=	  C:\AOI_DATA64\Recipe\RSA INV Control Board bot.rcp64
  -> Side (UPPERCASE! TOP or BOT)
 LoginUser= a
  -> Operator
@@ -69,8 +69,16 @@ impl Board {
                             error_and_bail!("Serial reading error! Serial: {}", serial);
                         }
                     }
-                    "Side" => {
-                        side = value.to_uppercase();
+                    "Recipe" => {
+                        // C:\AOI_DATA64\Recipe\RSA INV Control Board bot.rcp64 -> BOT 
+                        // C:\AOI_DATA64\Recipe\RSA INV Control Board top.rcp64 -> TOP 
+
+                        // this is probably overcomplicated
+                        if let Some(file_name) = PathBuf::from(value).file_stem() {
+                            if let Some(x) = file_name.to_string_lossy().split_whitespace().last() {
+                                side = x.to_ascii_uppercase().to_owned();
+                            }
+                        };
                     }
                     "LoginUser" => {
                         user = value.to_string();
@@ -149,6 +157,6 @@ mod tests {
         // serial in log: V102508400582DB828853020
         assert_eq!("V102508400582D", board.short_dmc());
         assert_eq!("B828853", board.board_id());
-        assert_eq!("B828853_TOP", board.program_id());
+        assert_eq!("B828853_BOT", board.program_id());
     }
 }
