@@ -442,7 +442,6 @@ impl AoiStation {
                 *error_counter.lock().unwrap() = Some(counter);
 
                 let daily = AOI_log_file::helpers::PseudoErrT::generate(&boards.lock().unwrap());
-                println!("{:?}", daily);
                 *error_daily.lock().unwrap() = Some(daily);
 
                 *status.lock().unwrap() = Status::Standby;
