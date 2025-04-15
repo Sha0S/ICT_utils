@@ -74,9 +74,11 @@ impl Board {
                         // C:\AOI_DATA64\Recipe\RSA INV Control Board top.rcp64 -> TOP 
 
                         // this is probably overcomplicated
-                        if let Some(file_name) = PathBuf::from(value).file_stem() {
-                            if let Some(x) = file_name.to_string_lossy().split_whitespace().last() {
-                                side = x.to_ascii_uppercase().to_owned();
+                        if let Some((file_name,_)) = value.rsplit_once('.') {
+                            if file_name.len() > 3 {
+                                side = file_name
+                                    .chars().rev().take(3).collect::<Vec<_>>()
+                                    .into_iter().rev().collect::<String>().to_ascii_uppercase();
                             }
                         };
                     }
