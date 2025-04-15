@@ -260,6 +260,8 @@ fn get_logs<P: AsRef<Path>>(dir: &P) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     Ok((ret, ret_pdf))
 }
 
+// Moving a array for files to the dest directory,
+// in a subdir based on their creation date
 fn move_files<P: AsRef<Path>>(dest: &P, files: &[PathBuf]) -> Result<()> {
     let dest_dir = dest.as_ref();
     if !dest_dir.is_dir() {
@@ -269,22 +271,24 @@ fn move_files<P: AsRef<Path>>(dest: &P, files: &[PathBuf]) -> Result<()> {
         );
         std::fs::create_dir_all(dest_dir)?;
     }
-
-    // crating subdir /yyyy_mm_dd/
-    let date_now = chrono::Local::now();
-    let subdir = date_now.format("%Y_%m_%d").to_string();
-    let dest_dir_final = dest_dir.join(&subdir);
-    if !dest_dir_final.is_dir() {
-        info!(
-            "Found no directory [{:?}], attempting to create it.",
-            dest_dir_final
-        );
-        std::fs::create_dir_all(&dest_dir_final)?;
-    }
+    
 
     // iterating over the files, and moving them
     for file in files {
         if let Some(filename) = file.file_name() {
+
+            // Generating subdir based on the file dreation date
+            let datetime: chrono::DateTime<chrono::Local> = file.metadata()?.modified()?.into();
+            let subdir = datetime.format("%Y_%m_%d").to_string();
+            let dest_dir_final = dest_dir.join(&subdir);
+            if !dest_dir_final.is_dir() {
+                info!(
+                    "Found no directory [{:?}], attempting to create it.",
+                    dest_dir_final
+                );
+                std::fs::create_dir_all(&dest_dir_final)?;
+            }
+
             let mut dest_file_name = dest_dir_final.clone().join(filename);
 
             // If the dest_file_name already exists, then add a counter as a sufix
