@@ -21,6 +21,8 @@ macro_rules! error_and_bail {
     };
 }
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[tokio::main]
 async fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
@@ -28,7 +30,7 @@ async fn main() -> Result<()> {
     }
 
     env_logger::init();
-    info!("Starting uploader");
+    info!("Starting uploader (v{})", VERSION);
 
     let (tx, rx) = mpsc::sync_channel(1);
     let sql_tx = tx.clone();
