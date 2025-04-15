@@ -160,5 +160,12 @@ mod tests {
         assert_eq!("V102508400582D", board.short_dmc());
         assert_eq!("B828853", board.board_id());
         assert_eq!("B828853_BOT", board.program_id());
+
+        let board = Board::load(".\\test_files\\ex02.txt").unwrap();
+
+        // serial in log: V102508700046GB828853010
+        assert_eq!("V102508700046G", board.short_dmc());
+        assert_eq!("B828853", board.board_id());
+        assert_eq!("B828853_TOP", board.program_id());
     }
 }

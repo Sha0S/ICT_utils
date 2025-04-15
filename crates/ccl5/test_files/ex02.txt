@@ -1,0 +1,14 @@
+.YES_TESTRPT_FMT3
+Version=   5
+SerialNum= V102508700046GB828853010
+Recipe=	  C:\AOI_DATA64\Recipe\RSA INV Control Board top.rcp64
+Side=      Top
+LoginUser= a
+WorkOrder= E1234
+DateTime=  04/01/25 13:05:02
+PanelizedBoardID=   1
+BoardsPerPanel= 2
+MachineID= AOI-4330
+TestStatus= PASS
+[FilmThicknessMeasurement]
+[EndFilmThicknessMeasurement]
