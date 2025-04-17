@@ -1,0 +1,23 @@
+SerialNumber;V102431800039DB828853020
+MainSerial;VES/SN0012260309
+Part Number;B828853_02_F-5296
+Part Type;S100-SW120
+Machine ID;24-0285
+MES;1
+Start Time;2024.11.28. 16:18
+Testing time(sec);3
+Result;Failed
+Error Code;10001
+StepName;Min;Value;Max;Unit;Status
+DMM Init;1;1;1;;Passed
+LV PS Init;1;1;1;;Passed
+LV PS2 Init;1;1;1;;Passed
+CAN Init;1;1;1;;Passed
+Matrix Init;1;1;1;;Passed
+EXC_RES_ME_RET Continuity;0.1;90.115;10;Ohm;Failed
+EXC_RES_HSG_RET Continuity;0.1;90.115;10;Ohm;Failed
+TEMP1_HSG_RET Continuity;0.1;90.115;10;Ohm;Failed
+TEMP1_ME_RET Continuity;0.1;90.114;10;Ohm;Failed
+GND_J129 Continuity;0.1;90.114;10;Ohm;Failed
+GND_J130 Continuity;0.1;90.116;10;Ohm;Failed
+TCOLDPL_RET Continuity;0.1;90.117;10;Ohm;Failed

@@ -12,6 +12,7 @@ use log::{debug, error, info, trace, warn};
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
 mod keysight_log;
+mod test;
 
 // Removes the index from the testname.
 // For example: "17%c617" -> "c617"
