@@ -23,7 +23,7 @@ pub struct SingleBoard {
 // For tracking pseudo errors over time
 // Calculates daily/weekly failure rate for the loaded boards
 #[derive(Default, Debug)]
-pub struct PseudoErrT {
+pub struct ErrorTrackerT {
     pub inspection_plans: Vec<InspectionErrT>,
 }
 
@@ -31,16 +31,19 @@ pub struct PseudoErrT {
 pub struct InspectionErrT {
     pub name: String,
     pub days: Vec<DailyErrT>,
-    pub weeks: Vec<WeeklyErrT>
+    pub weeks: Vec<WeeklyErrT>,
 }
 
 #[derive(Default, Clone, Debug)]
 pub struct DailyErrT {
     pub date: NaiveDate,
     pub total_boards: u32,
-    pub failed_boards: u32,
-    pub total_pseudo: u32,
-    pub pseudo_per_board: f32,
+    pub r_failed_boards: u32,
+    pub p_failed_boards: u32,
+    pub total_real_errors: u32,
+    pub total_pseudo_errors: u32,
+    pub pseudo_errors_per_board: f32,
+    pub real_errors_per_board: f32,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -48,15 +51,17 @@ pub struct WeeklyErrT {
     pub year: i32,
     pub week: u32,
     pub total_boards: u32,
-    pub failed_boards: u32,
-    pub total_pseudo: u32,
-    pub pseudo_per_board: f32,
+    pub r_failed_boards: u32,
+    pub p_failed_boards: u32,
+    pub total_real_errors: u32,
+    pub total_pseudo_errors: u32,
+    pub pseudo_errors_per_board: f32,
+    pub real_errors_per_board: f32,
 }
 
-
-impl PseudoErrT {
-    pub fn generate(board_data: &[SingleBoard]) -> Self {
-        let mut ret = PseudoErrT::default();
+impl ErrorTrackerT {
+    pub fn generate(limit: usize, board_data: &[SingleBoard]) -> Self {
+        let mut ret = ErrorTrackerT::default();
 
         // tracks which barcode we have already processed for which inspection_plan (barcode, inspection_plan)
         let mut barcodes_at_repair: HashSet<(String, String)> = HashSet::new();
@@ -65,6 +70,11 @@ impl PseudoErrT {
             if board.operator.is_empty() {
                 continue;
             } // ignore logs not from the repair station
+
+            // ignore any board with failures above the set limit
+            if board.windows.len() > limit {
+                continue;
+            }
 
             // 1 - check if the inspection_plan already exists, if not create one.
             let inspection_plan = if let Some(id) = ret
@@ -92,11 +102,7 @@ impl PseudoErrT {
             } else {
                 inspection_plan.days.push(DailyErrT {
                     date,
-                    total_boards: 0,
-                    failed_boards: 0,
-                    total_pseudo: 0,
-                    pseudo_per_board: 0.0,
-                });
+                    ..Default::default()});
 
                 inspection_plan.days.last_mut().unwrap()
             };
@@ -107,11 +113,20 @@ impl PseudoErrT {
                 continue;
             } // ignore logs not containing faults
 
-            day.failed_boards += 1;
+            // number of windows > 0 && result = OK  -> pseudo failed board
+            // number of windows > 0 && result = NOK -> real failed board
+
+            if board.result {
+                day.p_failed_boards += 1;
+            } else {
+                day.r_failed_boards += 1;
+            }
 
             for window in &board.windows {
                 if window.result == WindowResult::PseudoError {
-                    day.total_pseudo += 1;
+                    day.total_pseudo_errors += 1;
+                } else {
+                    day.total_real_errors += 1;
                 }
             }
         }
@@ -136,7 +151,7 @@ impl PseudoErrT {
                 ret.inspection_plans.push(InspectionErrT {
                     name: board.inspection_plan.clone(),
                     days: Vec::new(),
-                    weeks: Vec::new()
+                    weeks: Vec::new(),
                 });
 
                 ret.inspection_plans.last_mut().unwrap()
@@ -151,10 +166,7 @@ impl PseudoErrT {
                 } else {
                     inspection_plan.days.push(DailyErrT {
                         date,
-                        total_boards: 0,
-                        failed_boards: 0,
-                        total_pseudo: 0,
-                        pseudo_per_board: 0.0,
+                        ..Default::default()
                     });
 
                     inspection_plan.days.last_mut().unwrap()
@@ -168,7 +180,8 @@ impl PseudoErrT {
             ip.days.sort_by_key(|f| f.date);
 
             for day in &mut ip.days {
-                day.pseudo_per_board = day.total_pseudo as f32 / day.total_boards as f32;
+                day.pseudo_errors_per_board = day.total_pseudo_errors as f32 / day.total_boards as f32;
+                day.real_errors_per_board = day.total_real_errors as f32 / day.total_boards as f32;
             }
         }
 
@@ -178,41 +191,44 @@ impl PseudoErrT {
                 let year = day.date.year();
                 let week_number = day.date.iso_week().week();
 
-                let week = if let Some(i)  = ip.weeks.iter().position(|f| f.year == year && f.week == week_number)
+                let week = if let Some(i) = ip
+                    .weeks
+                    .iter()
+                    .position(|f| f.year == year && f.week == week_number)
                 {
                     &mut ip.weeks[i]
                 } else {
                     ip.weeks.push(WeeklyErrT {
                         year,
                         week: week_number,
-                        total_boards: 0,
-                        failed_boards: 0,
-                        total_pseudo: 0,
-                        pseudo_per_board: 0.0,
+                        ..Default::default()
                     });
 
                     ip.weeks.last_mut().unwrap()
                 };
 
                 week.total_boards += day.total_boards;
-                week.failed_boards += day.failed_boards;
-                week.total_pseudo += day.total_pseudo;
+                week.p_failed_boards += day.p_failed_boards;
+                week.total_pseudo_errors += day.total_pseudo_errors;
+                week.r_failed_boards += day.r_failed_boards;
+                week.total_real_errors += day.total_real_errors;
             }
 
-            ip.weeks.sort_by(|a,b| 
+            ip.weeks.sort_by(|a, b| {
                 if a.year == b.year {
                     a.week.cmp(&b.week)
                 } else {
                     a.year.cmp(&b.year)
                 }
-            );
+            });
 
             for week in &mut ip.weeks {
-                week.pseudo_per_board = week.total_pseudo as f32 / week.total_boards as f32;
+                week.pseudo_errors_per_board = week.total_pseudo_errors as f32 / week.total_boards as f32;
+                week.real_errors_per_board = week.total_real_errors as f32 / week.total_boards as f32;
             }
         }
 
-        ret.inspection_plans.sort_by(|a,b | a.name.cmp(&b.name));
+        ret.inspection_plans.sort_by(|a, b| a.name.cmp(&b.name));
 
         ret
     }
@@ -253,7 +269,7 @@ pub struct PositionErrC {
 }
 
 impl PseudoErrC {
-    pub fn generate(board_data: &[SingleBoard]) -> Self {
+    pub fn generate(limit: usize, board_data: &[SingleBoard]) -> Self {
         let mut inspection_plans: Vec<String> = Vec::new();
 
         // 1 - gather the inspection plans
@@ -277,6 +293,11 @@ impl PseudoErrC {
             if board.operator.is_empty() {
                 continue;
             } // ignore logs not from the repair station
+
+            // ignore any board with failures above the set limit
+            if board.windows.len() > limit {
+                continue;
+            }
 
             let inspection_id = inspection_plans
                 .iter()

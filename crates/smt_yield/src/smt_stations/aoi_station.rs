@@ -79,7 +79,7 @@ impl Stations {
     }
 
     fn sort(&mut self) {
-        self.products.sort_by(|a,b| a.name.cmp(&b.name));
+        self.products.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
     fn get_line_selection(&self) -> Vec<bool> {
@@ -142,10 +142,12 @@ pub struct AoiStation {
     stations: Arc<Mutex<Stations>>,
 
     daily: bool,
+    pseudo_errors: bool,
+    error_limit_per_board: usize,
 
     boards: Arc<Mutex<Vec<AOI_log_file::helpers::SingleBoard>>>,
     error_counter: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrC>>>,
-    error_daily: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrT>>>,
+    error_daily: Arc<Mutex<Option<AOI_log_file::helpers::ErrorTrackerT>>>,
 }
 
 impl Default for AoiStation {
@@ -156,6 +158,8 @@ impl Default for AoiStation {
             status_message: Arc::new(Mutex::new(String::new())),
             stations: Arc::new(Mutex::new(Stations::default())),
             daily: false,
+            pseudo_errors: true,
+            error_limit_per_board: 50,
             boards: Arc::new(Mutex::new(Vec::new())),
             error_counter: Arc::new(Mutex::new(None)),
             error_daily: Arc::new(Mutex::new(None)),
@@ -280,6 +284,7 @@ impl AoiStation {
         let ctx = ctx.clone();
         let status = self.status.clone();
         let message = self.status_message.clone();
+        let limit = self.error_limit_per_board;
 
         self.boards.lock().unwrap().clear();
         let boards = self.boards.clone();
@@ -344,21 +349,23 @@ impl AoiStation {
 
             let client = client_opt.as_mut().unwrap();
             /*
-                SELECT Serial_NMBR, Date_Time, Station, Program, Variant, Operator, Result, "Data"
+                SELECT q1.Serial_NMBR, q1.Date_Time, q1.Station, q1.Program, q1.Variant, q1.Operator, q1.Result, q1.Data
+                FROM dbo.SMT_AOI_RESULTS q1 INNER JOIN 
+                (
+                SELECT Serial_NMBR, Program, MAX(Date_Time) AS Time
                 FROM dbo.SMT_AOI_RESULTS
-                WHERE
-                Station =
-                AND
-                Program =
-                AND
-                Variant =
-                AND
-                Date_Time BETWEEN  x AND y
+                WHERE Station = 'JV_Line10' AND Date_Time > '2025-04-17 00:00:00.000' AND NOT Serial_NMBR = 'NO__BC'
+                GROUP BY Serial_NMBR, Program
+                ) q2
+                ON (q1.Serial_NMBR = q2.Serial_NMBR AND q1.Program = q2.Program AND q1.Date_Time = q2.Time)
             */
 
             // Crafting the query
             let mut query_text = String::from(
-                "SELECT Serial_NMBR, Date_Time, Station, Program, Variant, Operator, Result, [Data]
+                "SELECT q1.Serial_NMBR, q1.Date_Time, q1.Station, q1.Program, q1.Variant, q1.Operator, q1.Result, q1.Data
+                FROM dbo.SMT_AOI_RESULTS q1 INNER JOIN 
+                (
+                SELECT Serial_NMBR, Program, MAX(Date_Time) AS Time
                 FROM dbo.SMT_AOI_RESULTS
                 WHERE ",
             );
@@ -393,6 +400,11 @@ impl AoiStation {
                     start_datetime.format("%Y-%m-%d %H:%M:%S")
                 );
             }
+
+            query_text += " AND NOT Serial_NMBR = 'NO__BC'
+                GROUP BY Serial_NMBR, Program
+                ) q2
+                ON (q1.Serial_NMBR = q2.Serial_NMBR AND q1.Program = q2.Program AND q1.Date_Time = q2.Time)";
 
             debug!("Query text: {}", query_text);
 
@@ -436,12 +448,12 @@ impl AoiStation {
                     format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
 
                 let mut counter =
-                    AOI_log_file::helpers::PseudoErrC::generate(&boards.lock().unwrap());
-                
+                    AOI_log_file::helpers::PseudoErrC::generate(limit,&boards.lock().unwrap());
+
                 counter.sort_by_ip_id(None);
                 *error_counter.lock().unwrap() = Some(counter);
 
-                let daily = AOI_log_file::helpers::PseudoErrT::generate(&boards.lock().unwrap());
+                let daily = AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
                 *error_daily.lock().unwrap() = Some(daily);
 
                 *status.lock().unwrap() = Status::Standby;
@@ -453,6 +465,44 @@ impl AoiStation {
 
             ctx.request_repaint();
         });
+    }
+
+    fn reload_after_limit_change(&mut self, ctx: &egui::Context) {
+        if *self.status.lock().unwrap() != Status::Standby {
+            return;
+        }
+
+        info!("Updating set limit.");
+
+        *self.status.lock().unwrap() = Status::Loading;
+        *self.status_message.lock().unwrap() = String::from("Adatok újra-generálása");
+
+        let ctx = ctx.clone();
+        let status = self.status.clone();
+        let limit = self.error_limit_per_board;
+
+        let boards = self.boards.clone();
+
+        *self.error_counter.lock().unwrap() = None;
+        let error_counter = self.error_counter.clone();
+
+        *self.error_daily.lock().unwrap() = None;
+        let error_daily = self.error_daily.clone();
+
+        tokio::spawn(async move {
+            let mut counter =
+                    AOI_log_file::helpers::PseudoErrC::generate(limit,&boards.lock().unwrap());
+
+            counter.sort_by_ip_id(None);
+            *error_counter.lock().unwrap() = Some(counter);
+
+            let daily = AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
+            *error_daily.lock().unwrap() = Some(daily);
+
+            *status.lock().unwrap() = Status::Standby;
+        });
+
+        ctx.request_repaint();
     }
 
     pub fn side_panel(
@@ -489,7 +539,7 @@ impl AoiStation {
         ui.separator();
         let mut query = false;
 
-        egui::ScrollArea::vertical().show(ui, |ui|{
+        egui::ScrollArea::vertical().show(ui, |ui| {
             for product in &mut stations.products {
                 if let Some(line_sel) = &station_update {
                     product.update_availability(line_sel);
@@ -518,7 +568,7 @@ impl AoiStation {
         }
     }
 
-    pub fn central_panel(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+    pub fn central_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         if *self.status.lock().unwrap() != Status::Standby {
@@ -535,10 +585,12 @@ impl AoiStation {
                 self.active_panel = ActivePanel::PseudoErrors;
             }
 
-            if ui.button("Idő").clicked() {
+            if ui.button("Idő szerint").clicked() {
                 self.active_panel = ActivePanel::Timeline;
             }
         });
+
+        let mut limit_changed = false;
 
         ui.separator();
 
@@ -639,7 +691,21 @@ impl AoiStation {
             // would potentially need to implement Traits for day/week structs.
 
             if let Some(daily) = self.error_daily.lock().unwrap().as_ref() {
-                ui.checkbox(&mut self.daily, "Napi kimutatás");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.daily, true, "Napi");
+                    ui.selectable_value(&mut self.daily, false, "Heti");
+                    ui.add_space(30.0);
+                    ui.selectable_value(&mut self.pseudo_errors, true, "Pszeudo hibák");
+                    ui.selectable_value(&mut self.pseudo_errors, false, "Valós hibák");
+                    ui.add_space(30.0);
+                    ui.label("Hiba limit:");
+                    if ui.add(
+                      egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
+                    ).changed() {
+                        limit_changed = true;
+                    }
+                });
+
                 egui::ScrollArea::both()
                     .scroll_bar_visibility(
                         egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
@@ -686,20 +752,20 @@ impl AoiStation {
 
                                             for day in inspection_plan.days.iter() {
                                                 row.col(|ui| {
-                                                    ui.label(day.failed_boards.to_string());
+                                                    ui.label(day.p_failed_boards.to_string());
                                                 });
                                             }
                                         });
                                         body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                ui.label("Pszeudó hiba átlag");
+                                                ui.label("Hiba átlag");
                                             });
 
                                             for day in inspection_plan.days.iter() {
                                                 row.col(|ui| {
                                                     ui.label(format!(
                                                         "{:.2}",
-                                                        day.pseudo_per_board
+                                                        day.pseudo_errors_per_board
                                                     ));
                                                 });
                                             }
@@ -714,7 +780,7 @@ impl AoiStation {
                                             for day in inspection_plan.days.iter() {
                                                 row.col(|ui| {
                                                     if let Some(i) = yesterday {
-                                                        let delta = day.pseudo_per_board - i;
+                                                        let delta = day.pseudo_errors_per_board - i;
 
                                                         ui.label(
                                                             RichText::new(format!("{:+.2}", delta))
@@ -726,7 +792,7 @@ impl AoiStation {
                                                         );
                                                     }
 
-                                                    yesterday = Some(day.pseudo_per_board);
+                                                    yesterday = Some(day.pseudo_errors_per_board);
                                                 });
                                             }
                                         });
@@ -745,7 +811,10 @@ impl AoiStation {
                                         egui::Align::Center,
                                     ))
                                     .column(Column::auto().at_least(100.0))
-                                    .columns(Column::auto().at_least(100.0), inspection_plan.weeks.len())
+                                    .columns(
+                                        Column::auto().at_least(100.0),
+                                        inspection_plan.weeks.len(),
+                                    )
                                     .header(20.0, |mut header| {
                                         header.col(|_ui| {});
                                         for week in inspection_plan.weeks.iter() {
@@ -773,31 +842,43 @@ impl AoiStation {
 
                                             for week in inspection_plan.weeks.iter() {
                                                 row.col(|ui| {
-                                                    ui.label(week.failed_boards.to_string());
+                                                    ui.label(if self.pseudo_errors {
+                                                        week.p_failed_boards.to_string()
+                                                    } else {
+                                                        week.r_failed_boards.to_string()
+                                                    });
                                                 });
                                             }
                                         });
                                         body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                ui.label("Pszeudó hiba összesen");
+                                                ui.label("Hiba összesen");
                                             });
 
                                             for week in inspection_plan.weeks.iter() {
                                                 row.col(|ui| {
-                                                    ui.label(week.total_pseudo.to_string());
+                                                    ui.label(if self.pseudo_errors {
+                                                        week.total_pseudo_errors.to_string()
+                                                    } else {
+                                                        week.total_real_errors.to_string()
+                                                    });
                                                 });
                                             }
                                         });
                                         body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                ui.label("Pszeudó hiba átlag");
+                                                ui.label("Hiba átlag");
                                             });
 
                                             for week in inspection_plan.weeks.iter() {
                                                 row.col(|ui| {
                                                     ui.label(format!(
                                                         "{:.2}",
-                                                        week.pseudo_per_board
+                                                        if self.pseudo_errors {
+                                                            week.pseudo_errors_per_board
+                                                        } else {
+                                                            week.real_errors_per_board
+                                                        }
                                                     ));
                                                 });
                                             }
@@ -812,31 +893,51 @@ impl AoiStation {
                                             for week in inspection_plan.weeks.iter() {
                                                 row.col(|ui| {
                                                     if let Some(i) = last_week {
-                                                        let delta = week.pseudo_per_board - i;
-                                                        let deltap = ( week.pseudo_per_board / i - 1.0)*100.0 ;
+                                                        let delta = if self.pseudo_errors {
+                                                            week.pseudo_errors_per_board - i
+                                                        } else {
+                                                            week.real_errors_per_board - i
+                                                        };
+                                                        let deltap = if self.pseudo_errors {
+                                                            (week.pseudo_errors_per_board / i - 1.0)
+                                                                * 100.0
+                                                        } else {
+                                                            (week.real_errors_per_board / i - 1.0)
+                                                                * 100.0
+                                                        };
 
                                                         ui.vertical(|ui| {
                                                             ui.label(
-                                                                RichText::new(format!("{:+.2}", delta))
-                                                                    .color(if delta > 0.0 {
-                                                                        Color32::RED
-                                                                    } else {
-                                                                        Color32::GREEN
-                                                                    }),
+                                                                RichText::new(format!(
+                                                                    "{:+.2}",
+                                                                    delta
+                                                                ))
+                                                                .color(if delta > 0.0 {
+                                                                    Color32::RED
+                                                                } else {
+                                                                    Color32::GREEN
+                                                                }),
                                                             );
-    
+
                                                             ui.label(
-                                                                RichText::new(format!("{:+.2}%", deltap))
-                                                                    .color(if delta > 0.0 {
-                                                                        Color32::RED
-                                                                    } else {
-                                                                        Color32::GREEN
-                                                                    }),
+                                                                RichText::new(format!(
+                                                                    "{:+.2}%",
+                                                                    deltap
+                                                                ))
+                                                                .color(if delta > 0.0 {
+                                                                    Color32::RED
+                                                                } else {
+                                                                    Color32::GREEN
+                                                                }),
                                                             );
                                                         });
                                                     }
 
-                                                    last_week = Some(week.pseudo_per_board);
+                                                    last_week = Some(if self.pseudo_errors {
+                                                        week.pseudo_errors_per_board
+                                                    } else {
+                                                        week.real_errors_per_board
+                                                    });
                                                 });
                                             }
                                         });
@@ -846,7 +947,13 @@ impl AoiStation {
                     });
             }
         }
+
+        if limit_changed {
+            self.reload_after_limit_change(ctx)
+        }
+
     }
+
 }
 
 fn colapsing_button(ui: &mut egui::Ui, b: &mut bool) {
