@@ -470,6 +470,8 @@ impl AoiStation {
         let mut stations = self.stations.lock().unwrap();
         let mut stations_changed = false;
 
+        ui.style_mut().spacing.scroll = ScrollStyle::solid();
+
         for line in &mut stations.lines {
             ui.horizontal(|ui| {
                 if ui.checkbox(&mut line.selected, &line.name).changed() {
@@ -485,6 +487,7 @@ impl AoiStation {
         };
 
         ui.separator();
+        let mut query = false;
 
         egui::ScrollArea::vertical().show(ui, |ui|{
             for product in &mut stations.products {
@@ -498,22 +501,25 @@ impl AoiStation {
                     });
                 }
             }
+
+            ui.add_space(10.0);
+
+            ui.vertical_centered(|ui| {
+                if ui.button("Lekérdezés").clicked() {
+                    query = true;
+                }
+            });
         });
 
         drop(stations);
 
-        ui.add_space(10.0);
-
-        ui.vertical_centered(|ui| {
-            if ui.button("Lekérdezés").clicked() {
-                self.query(ctx, timeframe, connection.clone());
-            }
-        });
+        if query {
+            self.query(ctx, timeframe, connection.clone());
+        }
     }
 
     pub fn central_panel(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
-        ui.visuals_mut().collapsing_header_frame = true;
 
         if *self.status.lock().unwrap() != Status::Standby {
             ui.vertical_centered(|ui| {
@@ -739,7 +745,7 @@ impl AoiStation {
                                         egui::Align::Center,
                                     ))
                                     .column(Column::auto().at_least(100.0))
-                                    .columns(Column::auto(), inspection_plan.weeks.len())
+                                    .columns(Column::auto().at_least(100.0), inspection_plan.weeks.len())
                                     .header(20.0, |mut header| {
                                         header.col(|_ui| {});
                                         for week in inspection_plan.weeks.iter() {
@@ -773,6 +779,17 @@ impl AoiStation {
                                         });
                                         body.row(20.0, |mut row| {
                                             row.col(|ui| {
+                                                ui.label("Pszeudó hiba összesen");
+                                            });
+
+                                            for week in inspection_plan.weeks.iter() {
+                                                row.col(|ui| {
+                                                    ui.label(week.total_pseudo.to_string());
+                                                });
+                                            }
+                                        });
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
                                                 ui.label("Pszeudó hiba átlag");
                                             });
 
@@ -785,7 +802,7 @@ impl AoiStation {
                                                 });
                                             }
                                         });
-                                        body.row(20.0, |mut row| {
+                                        body.row(40.0, |mut row| {
                                             row.col(|ui| {
                                                 ui.label("Delta");
                                             });
@@ -796,15 +813,27 @@ impl AoiStation {
                                                 row.col(|ui| {
                                                     if let Some(i) = last_week {
                                                         let delta = week.pseudo_per_board - i;
+                                                        let deltap = ( week.pseudo_per_board / i - 1.0)*100.0 ;
 
-                                                        ui.label(
-                                                            RichText::new(format!("{:+.2}", delta))
-                                                                .color(if delta > 0.0 {
-                                                                    Color32::RED
-                                                                } else {
-                                                                    Color32::GREEN
-                                                                }),
-                                                        );
+                                                        ui.vertical(|ui| {
+                                                            ui.label(
+                                                                RichText::new(format!("{:+.2}", delta))
+                                                                    .color(if delta > 0.0 {
+                                                                        Color32::RED
+                                                                    } else {
+                                                                        Color32::GREEN
+                                                                    }),
+                                                            );
+    
+                                                            ui.label(
+                                                                RichText::new(format!("{:+.2}%", deltap))
+                                                                    .color(if delta > 0.0 {
+                                                                        Color32::RED
+                                                                    } else {
+                                                                        Color32::GREEN
+                                                                    }),
+                                                            );
+                                                        });
                                                     }
 
                                                     last_week = Some(week.pseudo_per_board);
