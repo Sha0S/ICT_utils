@@ -501,7 +501,7 @@ impl MyApp {
         lock.update();
         self.yields = lock.get_yields();
         self.mb_yields = lock.get_mb_yields();
-        self.failures = lock.get_failures(self.fl_setting);
+        self.failures = lock.get_failures(self.fl_setting, self.hourly_gs);
         self.hourly_stats = lock.get_hourly_mb_stats();
         self.multiboard_results = lock.get_mb_results();
         self.limitchanges = lock.get_tests_w_limit_changes();
@@ -899,7 +899,7 @@ impl eframe::App for MyApp {
                         .log_master
                         .read()
                         .unwrap()
-                        .get_failures(self.fl_setting);
+                        .get_failures(self.fl_setting, self.hourly_gs);
                 }
 
                 if !self.failures.is_empty() {

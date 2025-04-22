@@ -2736,10 +2736,14 @@ impl LogFileHandler {
         ret
     }
 
-    pub fn get_failures(&self, setting: FlSettings) -> Vec<FailureList> {
+    pub fn get_failures(&self, setting: FlSettings, include_golden_samples: bool) -> Vec<FailureList> {
         let mut failure_list: Vec<FailureList> = Vec::new();
 
         for mb in &self.multiboards {
+            if !include_golden_samples && mb.golden_sample {
+                continue;
+            }
+
             'failfor: for failure in mb.get_failures(setting) {
                 // Check if already present
                 for fl in &mut failure_list {
@@ -3038,7 +3042,8 @@ impl LogFileHandler {
                 ret = (0..self.testlist.len()).collect();
             }
             ExportMode::FailuresOnly => {
-                for id in self.get_failures(FlSettings::All) {
+                // TODO: Might want to filter out golden samples from the results? Or make it optional?
+                for id in self.get_failures(FlSettings::All, true) {
                     ret.push(id.test_id);
                 }
             }
