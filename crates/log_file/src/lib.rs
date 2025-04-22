@@ -2631,11 +2631,18 @@ impl LogFileHandler {
         self.mb_total_yield = Yield(0, 0);
 
         for b in self.multiboards.iter_mut() {
-            mbres.push(b.update());
+            let mb_yield = b.update();
+
 
             if self.pp_multiboard < b.boards.len() {
                 self.pp_multiboard = b.boards.len();
             }
+
+            if b.golden_sample {
+                continue;
+            }
+
+            mbres.push(mb_yield);
 
             for result in &b.results {
                 if result.result == BResult::Pass {
