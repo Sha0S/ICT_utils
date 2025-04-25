@@ -20,6 +20,80 @@ pub struct SingleBoard {
     pub windows: Vec<Window>,
 }
 
+// Generate a list of the boards and positions marked as faulty. ("real" errors)
+
+#[derive(Default, Debug)]
+pub struct ErrorList {
+    pub inspection_plans: Vec<InspectionErrList>,
+}
+
+#[derive(Default, Debug)]
+pub struct InspectionErrList {
+    pub name: String,
+    pub failed_boards: Vec<BoardErrList>
+}
+
+#[derive(Default, Debug)]
+pub struct BoardErrList {
+    pub barcode: String,
+    pub date_time: NaiveDateTime,
+    pub failed_positions: Vec<String>
+}
+
+impl ErrorList {
+    pub fn generate(limit: usize, board_data: &[SingleBoard]) -> Self {
+        let mut ret = Self::default();
+
+        for board in board_data {
+            if board.operator.is_empty() || board.result {
+                continue;
+            } // ignore logs not from the repair station and logs from passed boards
+
+            // ignore any board with failures above the set limit
+            if board.windows.len() > limit {
+                continue;
+            }
+
+            // 1 - check if the inspection_plan already exists, if not create one.
+            let inspection_plan = if let Some(id) = ret
+                .inspection_plans
+                .iter()
+                .position(|f| f.name == board.inspection_plan)
+            {
+                &mut ret.inspection_plans[id]
+            } else {
+                ret.inspection_plans.push(InspectionErrList {
+                    name: board.inspection_plan.clone(),
+                    failed_boards: Vec::new(),
+                });
+
+                ret.inspection_plans.last_mut().unwrap()
+            };
+
+            
+            // 2 - gather all uinque failed positions
+            let mut failed_positions =  Vec::new();
+
+            for pos in board.windows.iter().filter(|f| f.result == WindowResult::Fail) {
+                if !failed_positions.contains(&pos.id) {
+                    failed_positions.push(pos.id.clone());
+                }
+            }
+
+            // 3 - insert new board data
+            inspection_plan.failed_boards.push(
+                BoardErrList { 
+                    barcode: board.barcode.clone(), 
+                    date_time: board.date_time, 
+                    failed_positions                
+                 }
+            );
+        }
+
+        ret
+    }
+}
+
 // For tracking pseudo errors over time
 // Calculates daily/weekly failure rate for the loaded boards
 #[derive(Default, Debug)]

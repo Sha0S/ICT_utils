@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(egui::Vec2 {
-                x: 550.0,
+                x: 650.0,
                 y: window_height,
             })
             .with_icon(load_icon()),

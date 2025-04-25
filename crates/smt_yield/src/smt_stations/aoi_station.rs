@@ -132,6 +132,7 @@ impl Product {
 enum ActivePanel {
     PseudoErrors,
     Timeline,
+    ErrorList
 }
 
 #[derive(Debug)]
@@ -148,6 +149,7 @@ pub struct AoiStation {
     boards: Arc<Mutex<Vec<AOI_log_file::helpers::SingleBoard>>>,
     error_counter: Arc<Mutex<Option<AOI_log_file::helpers::PseudoErrC>>>,
     error_daily: Arc<Mutex<Option<AOI_log_file::helpers::ErrorTrackerT>>>,
+    error_list: Arc<Mutex<Option<AOI_log_file::helpers::ErrorList>>>,
 }
 
 impl Default for AoiStation {
@@ -163,6 +165,7 @@ impl Default for AoiStation {
             boards: Arc::new(Mutex::new(Vec::new())),
             error_counter: Arc::new(Mutex::new(None)),
             error_daily: Arc::new(Mutex::new(None)),
+            error_list: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -294,6 +297,9 @@ impl AoiStation {
 
         *self.error_daily.lock().unwrap() = None;
         let error_daily = self.error_daily.clone();
+
+        *self.error_list.lock().unwrap() = None;
+        let error_list = self.error_list.clone();
 
         let stations = self.stations.lock().unwrap();
 
@@ -456,6 +462,9 @@ impl AoiStation {
                 let daily = AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
                 *error_daily.lock().unwrap() = Some(daily);
 
+                let elist = AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
+                *error_list.lock().unwrap() = Some(elist);
+
                 *status.lock().unwrap() = Status::Standby;
             } else {
                 error!("Query FAILED!");
@@ -489,6 +498,9 @@ impl AoiStation {
         *self.error_daily.lock().unwrap() = None;
         let error_daily = self.error_daily.clone();
 
+        *self.error_list.lock().unwrap() = None;
+        let error_list = self.error_list.clone();
+
         tokio::spawn(async move {
             let mut counter =
                     AOI_log_file::helpers::PseudoErrC::generate(limit,&boards.lock().unwrap());
@@ -498,6 +510,9 @@ impl AoiStation {
 
             let daily = AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
             *error_daily.lock().unwrap() = Some(daily);
+
+            let elist = AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
+            *error_list.lock().unwrap() = Some(elist);
 
             *status.lock().unwrap() = Status::Standby;
         });
@@ -588,6 +603,10 @@ impl AoiStation {
             if ui.button("Idő szerint").clicked() {
                 self.active_panel = ActivePanel::Timeline;
             }
+
+            if ui.button("Kieső PCB-k listája").clicked() {
+                self.active_panel = ActivePanel::ErrorList;
+            }
         });
 
         let mut limit_changed = false;
@@ -596,11 +615,23 @@ impl AoiStation {
 
         if self.active_panel == ActivePanel::PseudoErrors {
             if let Some(counter) = self.error_counter.lock().unwrap().as_mut() {
+
+                ui.horizontal(|ui| {
+                    ui.label("Hiba limit:");
+                    if ui.add(
+                      egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
+                    ).lost_focus() {
+                        limit_changed = true;
+                    }
+                });
+
+                ui.separator();
                 let mut sort_after = None;
 
                 TableBuilder::new(ui)
                     .id_salt("Pszeudo")
                     .striped(true)
+                    .auto_shrink( [false, true])
                     .cell_layout(Layout::from_main_dir_and_cross_align(
                         egui::Direction::LeftToRight,
                         egui::Align::Center,
@@ -701,10 +732,12 @@ impl AoiStation {
                     ui.label("Hiba limit:");
                     if ui.add(
                       egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
-                    ).changed() {
+                    ).lost_focus() {
                         limit_changed = true;
                     }
                 });
+
+                ui.separator();
 
                 egui::ScrollArea::both()
                     .scroll_bar_visibility(
@@ -712,6 +745,11 @@ impl AoiStation {
                     )
                     .show(ui, |ui| {
                         if self.daily {
+
+                            ui.add_space(50.0);
+                            ui.heading("Fejlesztés alatt.");
+                            ui.add_space(50.0);
+
                             for inspection_plan in &daily.inspection_plans {
                                 ui.add_space(20.0);
                                 ui.label(&inspection_plan.name);
@@ -806,6 +844,8 @@ impl AoiStation {
                                 TableBuilder::new(ui)
                                     .id_salt(&inspection_plan.name)
                                     .striped(true)
+                                    .vscroll(false)
+                                    .auto_shrink( [false, true])
                                     .cell_layout(Layout::from_main_dir_and_cross_align(
                                         egui::Direction::LeftToRight,
                                         egui::Align::Center,
@@ -865,84 +905,198 @@ impl AoiStation {
                                                 });
                                             }
                                         });
-                                        body.row(20.0, |mut row| {
-                                            row.col(|ui| {
-                                                ui.label("Hiba átlag");
-                                            });
 
-                                            for week in inspection_plan.weeks.iter() {
+                                        if self.pseudo_errors {
+                                            body.row(20.0, |mut row| {
                                                 row.col(|ui| {
-                                                    ui.label(format!(
-                                                        "{:.2}",
-                                                        if self.pseudo_errors {
+                                                    ui.label("Hiba átlag");
+                                                });
+    
+                                                for week in inspection_plan.weeks.iter() {
+                                                    row.col(|ui| {
+                                                        ui.label(format!(
+                                                            "{:.2}",
+                                                                week.pseudo_errors_per_board
+                                                        ));
+                                                    });
+                                                }
+                                            });
+                                            body.row(40.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.label("Delta");
+                                                });
+    
+                                                let mut last_week = None;
+    
+                                                for week in inspection_plan.weeks.iter() {
+                                                    row.col(|ui| {
+                                                        if let Some(i) = last_week {
+                                                            let delta = week.pseudo_errors_per_board - i;
+                                                            let deltap = 
+                                                                (week.pseudo_errors_per_board / i - 1.0)
+                                                                    * 100.0;
+    
+                                                            ui.vertical(|ui| {
+                                                                ui.label(
+                                                                    RichText::new(format!(
+                                                                        "{:+.2}",
+                                                                        delta
+                                                                    ))
+                                                                    .color(if delta > 0.0 {
+                                                                        Color32::RED
+                                                                    } else {
+                                                                        Color32::GREEN
+                                                                    }),
+                                                                );
+    
+                                                                ui.label(
+                                                                    RichText::new(format!(
+                                                                        "{:+.2}%",
+                                                                        deltap
+                                                                    ))
+                                                                    .color(if delta > 0.0 {
+                                                                        Color32::RED
+                                                                    } else {
+                                                                        Color32::GREEN
+                                                                    }),
+                                                                );
+                                                            });
+                                                        }
+    
+                                                        last_week = Some(week.pseudo_errors_per_board);
+                                                    });
+                                                }
+                                            });
+                                        } else {
+                                            body.row(20.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.label("PPM");
+                                                });
+    
+                                                for week in inspection_plan.weeks.iter() {
+                                                    row.col(|ui| {
+                                                        let ppm = week.r_failed_boards as f32 * (1_000_000.0 / week.total_boards as f32 );
+                                                        ui.label(format!(
+                                                            "{:.2}", ppm
+                                                        ));
+                                                    });
+                                                }
+                                            });
+                                            /*body.row(40.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.label("Delta");
+                                                });
+    
+                                                let mut last_week = None;
+    
+                                                for week in inspection_plan.weeks.iter() {
+                                                    row.col(|ui| {
+                                                        if let Some(i) = last_week {
+                                                            let delta = if self.pseudo_errors {
+                                                                week.pseudo_errors_per_board - i
+                                                            } else {
+                                                                week.real_errors_per_board - i
+                                                            };
+                                                            let deltap = if self.pseudo_errors {
+                                                                (week.pseudo_errors_per_board / i - 1.0)
+                                                                    * 100.0
+                                                            } else {
+                                                                (week.real_errors_per_board / i - 1.0)
+                                                                    * 100.0
+                                                            };
+    
+                                                            ui.vertical(|ui| {
+                                                                ui.label(
+                                                                    RichText::new(format!(
+                                                                        "{:+.2}",
+                                                                        delta
+                                                                    ))
+                                                                    .color(if delta > 0.0 {
+                                                                        Color32::RED
+                                                                    } else {
+                                                                        Color32::GREEN
+                                                                    }),
+                                                                );
+    
+                                                                ui.label(
+                                                                    RichText::new(format!(
+                                                                        "{:+.2}%",
+                                                                        deltap
+                                                                    ))
+                                                                    .color(if delta > 0.0 {
+                                                                        Color32::RED
+                                                                    } else {
+                                                                        Color32::GREEN
+                                                                    }),
+                                                                );
+                                                            });
+                                                        }
+    
+                                                        last_week = Some(if self.pseudo_errors {
                                                             week.pseudo_errors_per_board
                                                         } else {
                                                             week.real_errors_per_board
-                                                        }
-                                                    ));
-                                                });
-                                            }
-                                        });
-                                        body.row(40.0, |mut row| {
-                                            row.col(|ui| {
-                                                ui.label("Delta");
-                                            });
-
-                                            let mut last_week = None;
-
-                                            for week in inspection_plan.weeks.iter() {
-                                                row.col(|ui| {
-                                                    if let Some(i) = last_week {
-                                                        let delta = if self.pseudo_errors {
-                                                            week.pseudo_errors_per_board - i
-                                                        } else {
-                                                            week.real_errors_per_board - i
-                                                        };
-                                                        let deltap = if self.pseudo_errors {
-                                                            (week.pseudo_errors_per_board / i - 1.0)
-                                                                * 100.0
-                                                        } else {
-                                                            (week.real_errors_per_board / i - 1.0)
-                                                                * 100.0
-                                                        };
-
-                                                        ui.vertical(|ui| {
-                                                            ui.label(
-                                                                RichText::new(format!(
-                                                                    "{:+.2}",
-                                                                    delta
-                                                                ))
-                                                                .color(if delta > 0.0 {
-                                                                    Color32::RED
-                                                                } else {
-                                                                    Color32::GREEN
-                                                                }),
-                                                            );
-
-                                                            ui.label(
-                                                                RichText::new(format!(
-                                                                    "{:+.2}%",
-                                                                    deltap
-                                                                ))
-                                                                .color(if delta > 0.0 {
-                                                                    Color32::RED
-                                                                } else {
-                                                                    Color32::GREEN
-                                                                }),
-                                                            );
                                                         });
-                                                    }
-
-                                                    last_week = Some(if self.pseudo_errors {
-                                                        week.pseudo_errors_per_board
-                                                    } else {
-                                                        week.real_errors_per_board
                                                     });
-                                                });
-                                            }
-                                        });
+                                                }
+                                            });*/
+                                        }                                        
                                     });
                             }
+                        }
+                    });
+            }
+        } else if self.active_panel == ActivePanel::ErrorList {
+            if let Some(list) = self.error_list.lock().unwrap().as_ref() {
+                ui.horizontal(|ui| {
+                    ui.label("Hiba limit:");
+                    if ui.add(
+                      egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
+                    ).lost_focus() {
+                        limit_changed = true;
+                    }
+                });
+
+                ui.separator();
+
+                egui::ScrollArea::both()
+                    .scroll_bar_visibility(
+                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    )
+                    .show(ui, |ui| {
+                        for inspection_plan in &list.inspection_plans {
+                            ui.add_space(20.0);
+                            ui.label(&inspection_plan.name);
+
+                            TableBuilder::new(ui)
+                                .id_salt(&inspection_plan.name)
+                                .striped(true)
+                                .vscroll(false)
+                                .auto_shrink( [false, true])
+                                .cell_layout(Layout::from_main_dir_and_cross_align(
+                                    egui::Direction::LeftToRight,
+                                    egui::Align::Center,
+                                ))
+                                .column(Column::auto().at_least(100.0)) // Serial
+                                .column(Column::auto().at_least(100.0)) // DateTime
+                                .column(Column::remainder().at_least(200.0)) // Positions
+                                .body(|mut body| {
+
+                                    for board in &inspection_plan.failed_boards {
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.label( &board.barcode );
+                                            });
+                                            row.col(|ui| {
+                                                ui.label( board.date_time.format("%Y-%m-%d %H:%M:%S").to_string() );
+                                            });
+                                            row.col(|ui| {
+                                                ui.label( board.failed_positions.join(", ") );
+                                            });
+                                        });
+                                    }
+                                    
+                                });
                         }
                     });
             }

@@ -28,8 +28,8 @@ pub struct StationHandler {
 
     selected_station: Station,
     aoi_station: AoiStation,
-    ict_station: IctStation,
-    fct_station: FctStation,
+    _ict_station: IctStation,
+    _fct_station: FctStation,
 }
 
 impl StationHandler {
@@ -38,8 +38,8 @@ impl StationHandler {
             connection: Arc::new(tokio::sync::Mutex::new(None)), 
             selected_station: Station::Aoi, 
             aoi_station: AoiStation::default(),  
-            ict_station: IctStation::default(),
-            fct_station: FctStation::default()
+            _ict_station: IctStation::default(),
+            _fct_station: FctStation::default()
         }
     }
 
