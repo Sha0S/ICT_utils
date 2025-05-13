@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use log::{debug, error, info, warn};
 use std::{
-    fs, path::PathBuf, sync::mpsc::{self, SyncSender}, time::Duration
+    collections::HashSet, fs, path::PathBuf, sync::mpsc::{self, SyncSender}, time::Duration
 };
 use tiberius::{Client, Query};
 use tokio::{net::TcpStream, time::sleep};
@@ -59,6 +59,11 @@ async fn main() -> Result<()> {
 
         sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
 
+        // Stores the path of the previous loop
+        // it is used to determine if a log was processed last time, or not
+        let mut log_buffer: HashSet<PathBuf> = HashSet::new();
+
+        // Uploader main loop
         loop {
 
             // 0 - check connection, reconnect if needed
@@ -88,6 +93,7 @@ async fn main() -> Result<()> {
             debug!("AOI auto update started");
             let start_time = chrono::Local::now();
             let mut new_logs = 0;
+            let mut skipped_logs = 0;
 
             // 1 - get date_time of the last update
             if let Ok(last_date) = ICT_config::get_last_date() {
@@ -99,14 +105,21 @@ async fn main() -> Result<()> {
 
                 // 3 - get logs
                 if let Ok(logs) = get_logs(target_dirs, last_date) {
+                    let new_log_buffer: HashSet<PathBuf> = HashSet::from_iter(logs.iter().cloned());
+
                     // 4 - process_logs
 
                     let mut processed_logs = Vec::new();
                     for log in logs {
-                        if let Ok(plog) = AOI_log_file::Panel::load_xml(&log) {
-                            processed_logs.push(plog);
+                        if log_buffer.contains(&log) {
+                            skipped_logs += 1;
+                            debug!("Buffer already contains log. Skipping!")
                         } else {
-                            error!("Failed to process log: {:?}", log);
+                            if let Ok(plog) = AOI_log_file::Panel::load_xml(&log) {
+                                    processed_logs.push(plog);
+                            } else {
+                                error!("Failed to process log: {:?}", log);
+                            }
                         }
                     }
 
@@ -179,6 +192,8 @@ async fn main() -> Result<()> {
                         if let Err(e) = ICT_config::set_last_date(start_time) {
                             error!("Failed to update last_time! {}", e);
                         };
+                        log_buffer = new_log_buffer;
+
                     } else {
                         sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                         error!("Upload failed - not setting new last_date");
@@ -192,7 +207,7 @@ async fn main() -> Result<()> {
 
             if new_logs > 0 {
                 let delta_t = chrono::Local::now() - start_time;
-                info!("Uploaded {new_logs} new results in {}s", delta_t.num_seconds());
+                info!("Uploaded {new_logs} new results in {}s (skipped: {skipped_logs})", delta_t.num_seconds());
             }
             
 
