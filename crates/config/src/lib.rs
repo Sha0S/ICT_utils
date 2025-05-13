@@ -12,6 +12,9 @@ use log::{debug, error};
 pub const CONFIG: &str = "config.ini";
 pub const PRODUCT_LIST: &str = "products";
 pub const GOLDEN_LIST: &str = "golden_samples";
+
+pub const LAST_DATE_FILE: &str = "last_date";
+pub const LAST_DATE_FILE_BAK: &str = "last_date.bak";
 pub const DMC_MIN_LENGTH: usize = 15;
 
 /* Product
@@ -515,4 +518,56 @@ pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> 
 
 pub fn query(serial: String) -> std::result::Result<std::process::Child, std::io::Error> {
     std::process::Command::new("query.exe").arg(serial).spawn()
+}
+
+
+// last_date subrutines
+// LAST_TIME_FILE_BAK is a backup of the previous value, in case of a file corruption
+
+pub fn get_last_date() -> anyhow::Result<chrono::DateTime<chrono::Local>> {
+    // 1 - try to read LAST_TIME_FILE
+    if let Ok(line) = fs::read_to_string(LAST_DATE_FILE) {
+        if let Ok(last_date) = chrono::NaiveDateTime::parse_from_str(&line, "%Y-%m-%d %H:%M:%S") {
+            match last_date.and_local_timezone(chrono::Local) {
+                chrono::offset::LocalResult::Single(t) => return Ok(t),
+                chrono::offset::LocalResult::Ambiguous(earliest, _) => return Ok(earliest),
+                chrono::offset::LocalResult::None => {
+                    error!("Error converting last_date! LocalResult::None!");
+                }
+            };
+        } else {
+            error!("Parsing last_date failed: {}", line);
+        }  
+    } else {
+        error!("Could not read {}!", LAST_DATE_FILE);
+    }
+
+    error!("Reading primary time source failed! Trying to read the backup.");
+
+    // 2 - try to read LAST_DATE_FILE_BAK
+    if let Ok(line) = fs::read_to_string(LAST_DATE_FILE_BAK) {
+        if let Ok(last_date) = chrono::NaiveDateTime::parse_from_str(&line, "%Y-%m-%d %H:%M:%S") {
+            match last_date.and_local_timezone(chrono::Local) {
+                chrono::offset::LocalResult::Single(t) => return Ok(t),
+                chrono::offset::LocalResult::Ambiguous(earliest, _) => return Ok(earliest),
+                chrono::offset::LocalResult::None => {
+                    error!("Error converting last_date! LocalResult::None!");
+                }
+            };
+        } else {
+            error!("Parsing last_date failed: {}", line);
+        }  
+    } else {
+        error!("Could not read {}!", LAST_DATE_FILE);
+    }
+
+    bail!("Could not read last_time!");
+}
+
+pub fn set_last_date(new: chrono::DateTime<chrono::Local>) -> anyhow::Result<()> {
+    fs::copy(LAST_DATE_FILE, LAST_DATE_FILE_BAK)?;
+    let output_string = new.format("%Y-%m-%d %H:%M:%S").to_string();
+    fs::write(LAST_DATE_FILE, output_string)?;
+
+    Ok(())
 }
