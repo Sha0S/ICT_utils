@@ -621,32 +621,15 @@ impl TcpServer {
         let start_time = chrono::Local::now();
 
         // 1 - get date_time of the last update
-        let last_date = fs::read_to_string("last_date.txt");
-
+        let last_date = ICT_config::get_last_date();
         if last_date.is_err() {
-            error!("Error reading last_date.txt!");
-            bail!("Error reading last_date.txt!");
+            error!("Error reading last_date!");
+            bail!("Error reading last_date!");
         }
 
-        let last_date = last_date.unwrap();
-        debug!("Last date: {}", last_date);
-
-        let last_date = chrono::NaiveDateTime::parse_from_str(&last_date, "%Y-%m-%d %H:%M:%S");
-
-        if last_date.is_err() {
-            error!("Error converting last_date!");
-            bail!("Error converting last_date!");
-        }
-
-        let last_date = last_date.unwrap().and_local_timezone(chrono::Local);
-        let last_date = match last_date {
-            chrono::offset::LocalResult::Single(t) => t,
-            chrono::offset::LocalResult::Ambiguous(earliest, _) => earliest,
-            chrono::offset::LocalResult::None => {
-                error!("Error converting last_date! LocalResult::None!");
-                bail!("Error converting last_date! LocalResult::None!");
-            }
-        };
+        // Adding 5 second "grace period"
+        // We had 1-2 pcbs/month which lacked result in SQL, but where OK in Simantic
+        let last_date = last_date? - chrono::Duration::seconds(5);
 
         // 2 - Gather logs older than last_date
 
@@ -748,8 +731,9 @@ impl TcpServer {
         }
 
         // Write new last_date to file
-        let output_string = start_time.format("%Y-%m-%d %H:%M:%S").to_string();
-        let _ = fs::write("last_date.txt", output_string);
+        if let Err(e) = ICT_config::set_last_date(start_time) {
+            error!("Failed to update last_time! {}", e);
+        }
 
         debug!("Converted: {}", last_date);
 
