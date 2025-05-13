@@ -90,7 +90,7 @@ async fn main() -> Result<()> {
             let mut new_logs = 0;
 
             // 1 - get date_time of the last update
-            if let Ok(last_date) = get_last_date() {
+            if let Ok(last_date) = ICT_config::get_last_date() {
                 let last_date = last_date - tminus; 
 
                 // 2 - get possible directories
@@ -176,7 +176,9 @@ async fn main() -> Result<()> {
                     // 7 - update last_date or report the error
                     if all_ok {
                         sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
-                        put_last_date(start_time);
+                        if let Err(e) = ICT_config::set_last_date(start_time) {
+                            error!("Failed to update last_time! {}", e);
+                        };
                     } else {
                         sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                         error!("Upload failed - not setting new last_date");
@@ -314,41 +316,6 @@ fn get_logs(target_dirs: Vec<PathBuf>, last_date: DateTime<Local>) -> Result<Vec
     Ok(ret)
 }
 
-fn get_last_date() -> Result<DateTime<Local>> {
-    let last_date = fs::read_to_string("last_date.txt");
-
-    if last_date.is_err() {
-        error!("Error reading last_date.txt!");
-        bail!("Error reading last_date.txt!");
-    }
-
-    let last_date = last_date.unwrap();
-    debug!("Last date: {}", last_date);
-
-    let last_date = chrono::NaiveDateTime::parse_from_str(&last_date, "%Y-%m-%d %H:%M:%S");
-
-    if last_date.is_err() {
-        error!("Error converting last_date!");
-        bail!("Error converting last_date!");
-    }
-
-    let last_date = last_date.unwrap().and_local_timezone(chrono::Local);
-    let last_date = match last_date {
-        chrono::offset::LocalResult::Single(t) => t,
-        chrono::offset::LocalResult::Ambiguous(earliest, _) => earliest,
-        chrono::offset::LocalResult::None => {
-            error!("Error converting last_date! LocalResult::None!");
-            bail!("Error converting last_date! LocalResult::None!");
-        }
-    };
-
-    Ok(last_date)
-}
-
-fn put_last_date(end_time: DateTime<Local>) {
-    let output_string = end_time.format("%Y-%m-%d %H:%M:%S").to_string();
-    let _ = fs::write("last_date.txt", output_string);
-}
 /*
 fn get_subdirs_for_aoi(log_dir: &Path, start: &chrono::DateTime<chrono::Local>) -> Vec<PathBuf> {
     let mut ret = Vec::new();
