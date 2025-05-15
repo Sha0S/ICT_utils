@@ -696,7 +696,7 @@ impl LogFile {
         {
             product_id = p_id.clone();
         } else {
-            error!("Root node is not a Batch node!");
+            error!("Root node is not a Batch node! {batch_node:?}");
             return None;
         }
 

@@ -8,6 +8,8 @@ Q:
 
 use std::{fs, io, path::Path, str::Chars};
 
+use log::{debug, warn};
+
 type Result<T> = std::result::Result<T, ParsingError>;
 
 #[derive(Debug, Clone)]
@@ -704,8 +706,15 @@ pub struct TreeNode {
     pub branches: Vec<TreeNode>,
 }
 
+type ResultTN<T> = std::result::Result<T, TnError>;
+
+#[derive(Debug)]
+enum TnError {
+    LimMissingClosures
+}
+
 impl TreeNode {
-    fn read(buffer: &mut Chars) -> Self {
+    fn read(buffer: &mut Chars) -> ResultTN<Self> {
         let mut branches: Vec<TreeNode> = Vec::new();
         let mut data_buff: String = String::new();
 
@@ -717,7 +726,7 @@ impl TreeNode {
 
             let c = c.unwrap();
             if c == '{' {
-                branches.push(TreeNode::read(buffer));
+                branches.push(TreeNode::read(buffer)?);
             } else if c != '\n' {
                 data_buff.push(c);
             }
@@ -726,12 +735,19 @@ impl TreeNode {
         if let Ok(data) =
             KeysightPrefix::new(data_buff.split('|').map(|f| f.trim().to_string()).collect())
         {
-            TreeNode { data, branches }
+            Ok(TreeNode { data, branches })
         } else {
-            TreeNode {
-                data: KeysightPrefix::Error(data_buff),
-                branches,
+            debug!("KeysightPrefix error: {data_buff}");
+            if data_buff.starts_with("@LIM2") && (data_buff.ends_with('-') || data_buff.ends_with('+')) {
+                Err(TnError::LimMissingClosures)
+            } else {
+                Ok(
+                TreeNode {
+                    data: KeysightPrefix::Error(data_buff),
+                    branches,
+                } )
             }
+            
         }
     }
 }
@@ -739,6 +755,8 @@ impl TreeNode {
 pub fn parse_file(path: &Path) -> io::Result<Vec<TreeNode>> {
     let file = fs::read_to_string(path)?;
     let mut buffer = file.chars();
+
+    let mut lim_missing_closures = false; 
 
     let mut tree: Vec<TreeNode> = Vec::new();
     loop {
@@ -751,7 +769,56 @@ pub fn parse_file(path: &Path) -> io::Result<Vec<TreeNode>> {
             continue;
         }
 
-        tree.push(TreeNode::read(&mut buffer));
+        match TreeNode::read(&mut buffer) {
+            Ok(node) => tree.push(node),
+            Err(e) => {
+                match e {
+                    TnError::LimMissingClosures => {
+                        warn!("Malformed log detected! Lim block is missing closures!");
+                        lim_missing_closures = true;
+                        break;
+                    },
+                }
+            },
+        }
+        
+    }
+
+    // Kaizen DRV: the custom looptests sometimes don't close the @LIM2 block correctly, the end of the line is missing
+    // We have to at least replace the two missing '}' at the end, ot the tree will be malformed.
+    if lim_missing_closures {
+        debug!("Trying to fix log.");
+        tree.clear();
+
+        let mut file_mod = String::new();
+        for line in file.lines() {
+            file_mod += line;
+            if line.starts_with("{@A-MEA") && !line.ends_with('}') {
+                debug!("Found error at: {line}");
+                file_mod += "!}}";
+            }
+        }
+
+        let mut buffer = file_mod.chars();
+
+        loop {
+            let c = buffer.next();
+            if c.is_none() {
+                break;
+            }
+    
+            if c.is_some_and(|f| f != '{') {
+                continue;
+            }
+    
+            match TreeNode::read(&mut buffer) {
+                Ok(node) => tree.push(node),
+                Err(_e) => {
+                    //error!("Log still contains errors after pre-processing! {e:?}")
+                },
+            }
+            
+        }
     }
 
     Ok(tree)

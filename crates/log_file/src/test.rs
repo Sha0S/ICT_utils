@@ -62,6 +62,22 @@ mod tests {
     }
 
     #[test]
+    fn ict_depth_fault() {
+        let path = PathBuf::from(".\\test_files\\kaizen_drv_faulty_log.ict");
+        let panel = LogFile::load_panel(&path).unwrap();
+
+        let board = &panel[0];
+
+        assert!(board.is_ok());
+        assert_eq!(board.get_status(), 9);
+        assert!(board.has_report());
+        assert_eq!(board.get_DMC(), "V102513400685AB847026030");
+        assert_eq!(board.get_product_id(), "RSA_Kaizen_INV_Driver");
+        assert!(!board.get_failed_tests().is_empty());
+        assert_eq!(board.get_tests().len(), 946);
+    }
+
+    #[test]
     fn cmd_all_ok() {
         let path = PathBuf::from(".\\test_files\\cmd_all_ok.ict");
         let board = LogFile::load(&path).unwrap();
