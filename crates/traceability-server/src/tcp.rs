@@ -149,6 +149,26 @@ impl TcpServer {
         let tokens: Vec<&str> = input.split('|').map(|f| f.trim_end_matches('\0')).collect();
         debug!("Tokens: {:?}", tokens);
         match tokens[0] {
+            "CHECK_GS" => {
+                if tokens.len() < 2 {
+                    self.tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
+                    error!("Missing token after CHECK_GS!");
+                    String::from("ER: Missing token!")
+                } else {
+                    match self.check_gs(tokens).await {
+                        Ok(x) => {
+                            self.tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+                            x
+                        }
+
+                        Err(x) => {
+                            self.tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
+                            error!("Failed to CHECK_GS: {x}");
+                            format!("ER: {x}")
+                        }
+                    }
+                }
+            }
             "START" => {
                 if tokens.len() < 3 {
                     self.tx.send(Message::SetIcon(IconCollor::Yellow)).unwrap();
@@ -336,6 +356,21 @@ impl TcpServer {
         }
 
         Ok("Connection is OK!".to_string())
+    }
+
+    // Only  checks if the main DMC is a golden sample or not.
+    // It is for products using iTAC for trace
+    async fn check_gs(&self, tokens: Vec<&str>) -> anyhow::Result<String> {
+        if let Some(dmc) = tokens.get(1) {
+            let dmc = dmc.to_string();
+            if self.golden_samples.contains(&dmc) {
+                return Ok(String::from("GS"));
+            } else {
+                return Ok(format!("NK"));
+            }
+        }
+
+        bail!("Token 1 missing"); // Shouldn't happen to begin with due to prev. check
     }
 
     async fn start_panel(&mut self, tokens: Vec<&str>) -> anyhow::Result<String> {
