@@ -514,6 +514,31 @@ pub fn generate_serials(serial: &str, position: u8, max_pos: u8) -> Vec<String> 
     ret
 }
 
+pub fn generate_main_serial(serial: &str, position: u8) -> anyhow::Result<String> {
+    log::debug!("generate_main_serials: {serial}, pos: {position}");
+
+    if position < 2 {
+        return Ok(serial.to_string());
+    }
+
+    if serial.len() < DMC_MIN_LENGTH {
+        bail!("DMC is too short! {serial}");
+    }
+
+    // VLLDDDxxxxxxx*
+    // x is 7 digits -> u32
+    if let Ok(start) = serial[6..13].parse::<u32>() {
+        let sn = start - position as u32 +1;
+
+        let mut s = serial.to_string();
+        s.replace_range(6..13, &format!("{:07}", sn));
+        return Ok(s);
+    } else {
+        log::error!("generate_main_serial: DMC parsing error ({serial})");
+        bail!("generate_main_serial: DMC parsing error ({serial})");
+    }
+}
+
 // Interop
 
 pub fn query(serial: String) -> std::result::Result<std::process::Child, std::io::Error> {
