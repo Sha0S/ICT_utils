@@ -273,12 +273,10 @@ fn move_files<P: AsRef<Path>>(dest: &P, files: &[PathBuf]) -> Result<()> {
         );
         std::fs::create_dir_all(dest_dir)?;
     }
-    
 
     // iterating over the files, and moving them
     for file in files {
         if let Some(filename) = file.file_name() {
-
             // Generating subdir based on the file dreation date
             let datetime: chrono::DateTime<chrono::Local> = file.metadata()?.modified()?.into();
             let subdir = datetime.format("%Y_%m_%d").to_string();

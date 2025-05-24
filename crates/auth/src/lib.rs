@@ -2,8 +2,8 @@
 
 #![allow(non_snake_case)]
 
-use std::{fs, io::Write};
 use pwhash::bcrypt;
+use std::{fs, io::Write};
 
 /// Default filename for the file containing local userdata
 static USER_LIST: &str = "users";
@@ -46,11 +46,11 @@ impl UserLevel {
     }
 }
 
-/// User struct 
+/// User struct
 ///
 /// name: name of the user, public
 /// level: authentication level of the user, public
-/// hash: hashed password of the user. Uses salt and pepper. 
+/// hash: hashed password of the user. Uses salt and pepper.
 #[derive(Debug, Clone)]
 pub struct User {
     pub name: String,
@@ -109,7 +109,10 @@ pub fn load_user_list() -> Vec<User> {
 pub fn save_user_list(users: &[User]) {
     if let Ok(mut file) = fs::File::create(USER_LIST) {
         for user in users {
-            file.write_all(format!("{}|{}|{}\n", user.name, user.level.print(), user.hash).as_bytes()).unwrap();
+            file.write_all(
+                format!("{}|{}|{}\n", user.name, user.level.print(), user.hash).as_bytes(),
+            )
+            .unwrap();
         }
     }
 }

@@ -79,6 +79,7 @@ name = "ICT_log_file"
 version = "0.0.0"
 dependencies = [
  "ICT_config",
+ "anyhow",
  "chrono",
  "ecolor",
  "egui",
@@ -124,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "SMT_utils"
-version = "2.11.7"
+version = "2.12.0"
 dependencies = [
  "AOI_log_file",
  "CCL5_log_file",

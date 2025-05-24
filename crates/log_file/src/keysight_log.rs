@@ -710,7 +710,7 @@ type ResultTN<T> = std::result::Result<T, TnError>;
 
 #[derive(Debug)]
 enum TnError {
-    LimMissingClosures
+    LimMissingClosures,
 }
 
 impl TreeNode {
@@ -738,16 +738,16 @@ impl TreeNode {
             Ok(TreeNode { data, branches })
         } else {
             debug!("KeysightPrefix error: {data_buff}");
-            if data_buff.starts_with("@LIM2") && (data_buff.ends_with('-') || data_buff.ends_with('+')) {
+            if data_buff.starts_with("@LIM2")
+                && (data_buff.ends_with('-') || data_buff.ends_with('+'))
+            {
                 Err(TnError::LimMissingClosures)
             } else {
-                Ok(
-                TreeNode {
+                Ok(TreeNode {
                     data: KeysightPrefix::Error(data_buff),
                     branches,
-                } )
+                })
             }
-            
         }
     }
 }
@@ -756,7 +756,7 @@ pub fn parse_file(path: &Path) -> io::Result<Vec<TreeNode>> {
     let file = fs::read_to_string(path)?;
     let mut buffer = file.chars();
 
-    let mut lim_missing_closures = false; 
+    let mut lim_missing_closures = false;
 
     let mut tree: Vec<TreeNode> = Vec::new();
     loop {
@@ -771,17 +771,14 @@ pub fn parse_file(path: &Path) -> io::Result<Vec<TreeNode>> {
 
         match TreeNode::read(&mut buffer) {
             Ok(node) => tree.push(node),
-            Err(e) => {
-                match e {
-                    TnError::LimMissingClosures => {
-                        warn!("Malformed log detected! Lim block is missing closures!");
-                        lim_missing_closures = true;
-                        break;
-                    },
+            Err(e) => match e {
+                TnError::LimMissingClosures => {
+                    warn!("Malformed log detected! Lim block is missing closures!");
+                    lim_missing_closures = true;
+                    break;
                 }
             },
         }
-        
     }
 
     // Kaizen DRV: the custom looptests sometimes don't close the @LIM2 block correctly, the end of the line is missing
@@ -806,18 +803,17 @@ pub fn parse_file(path: &Path) -> io::Result<Vec<TreeNode>> {
             if c.is_none() {
                 break;
             }
-    
+
             if c.is_some_and(|f| f != '{') {
                 continue;
             }
-    
+
             match TreeNode::read(&mut buffer) {
                 Ok(node) => tree.push(node),
                 Err(_e) => {
                     //error!("Log still contains errors after pre-processing! {e:?}")
-                },
+                }
             }
-            
         }
     }
 

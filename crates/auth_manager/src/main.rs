@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     _ = eframe::run_native(
         format!("ICT User Manager (v{VERSION})").as_str(),
         options,
-        Box::new(|_| Ok(Box::new(MyApp::default())))
+        Box::new(|_| Ok(Box::new(MyApp::default()))),
     );
 
     Ok(())
@@ -189,8 +189,8 @@ impl eframe::App for MyApp {
                                     );
                                 });
 
-                            let resp =
-                            ui.add(egui::Button::new("Add").min_size(Vec2 { x: 50.0, y: 15.0 }));
+                            let resp = ui
+                                .add(egui::Button::new("Add").min_size(Vec2 { x: 50.0, y: 15.0 }));
                             if resp.clicked() && self.new_user.all_ok() {
                                 println!("Adding new user");
                                 self.users.push(User::from(&self.new_user));

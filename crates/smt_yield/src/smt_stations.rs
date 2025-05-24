@@ -3,7 +3,6 @@ use tiberius::Client;
 use tokio::net::TcpStream;
 use tokio_util::compat::Compat;
 
-
 mod aoi_station;
 use aoi_station::*;
 
@@ -19,7 +18,7 @@ use crate::TimeFrame;
 pub enum Station {
     Aoi,
     Ict,
-    Fct
+    Fct,
 }
 
 #[derive(Debug)]
@@ -34,12 +33,12 @@ pub struct StationHandler {
 
 impl StationHandler {
     pub fn new() -> Self {
-        Self { 
-            connection: Arc::new(tokio::sync::Mutex::new(None)), 
-            selected_station: Station::Aoi, 
-            aoi_station: AoiStation::default(),  
+        Self {
+            connection: Arc::new(tokio::sync::Mutex::new(None)),
+            selected_station: Station::Aoi,
+            aoi_station: AoiStation::default(),
             _ict_station: IctStation::default(),
-            _fct_station: FctStation::default()
+            _fct_station: FctStation::default(),
         }
     }
 
@@ -57,18 +56,20 @@ impl StationHandler {
 
     pub fn side_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, timeframe: TimeFrame<'_>) {
         match self.selected_station {
-            Station::Aoi => self.aoi_station.side_panel(ctx,ui, timeframe, self.connection.clone()),
-            Station::Ict => {},
-            Station::Fct => {},
+            Station::Aoi => {
+                self.aoi_station
+                    .side_panel(ctx, ui, timeframe, self.connection.clone())
+            }
+            Station::Ict => {}
+            Station::Fct => {}
         }
     }
 
     pub fn central_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         match self.selected_station {
-            Station::Aoi => self.aoi_station.central_panel(ctx,ui),
-            Station::Ict => {},
-            Station::Fct => {},
+            Station::Aoi => self.aoi_station.central_panel(ctx, ui),
+            Station::Ict => {}
+            Station::Fct => {}
         }
     }
-
 }

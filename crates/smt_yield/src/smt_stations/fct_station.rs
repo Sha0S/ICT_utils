@@ -1,7 +1,2 @@
-
-
 #[derive(Debug, Default)]
-pub struct FctStation {
-
-}
-
+pub struct FctStation {}

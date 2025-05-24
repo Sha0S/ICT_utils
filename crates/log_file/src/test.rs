@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(board.get_DMC(), "V102431800038DB828853020");
         assert_eq!(board.get_product_id(), "Kaized CMD");
         assert!(board.get_failed_tests().is_empty());
-        assert_eq!(board.get_tests().len(), 262);
+        assert_eq!(board.get_tests().len(), 275);
     }
 
     #[test]

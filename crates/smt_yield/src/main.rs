@@ -30,7 +30,6 @@ async fn main() -> eframe::Result {
         Box::new(|cc| Ok(Box::new(SmtYieldApp::new(cc)))),
     )?;
 
-
     Ok(())
 }
 
@@ -48,29 +47,31 @@ struct SmtYieldApp {
 
 impl SmtYieldApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        Self { 
-            start_date: chrono::Local::now().date_naive(), 
-            start_time: (0,0), 
-            use_end_date: false, 
-            end_date: chrono::Local::now().date_naive(), 
-            end_time: (23,59), 
-            station_handler: SMT::StationHandler::new() 
+        Self {
+            start_date: chrono::Local::now().date_naive(),
+            start_time: (0, 0),
+            use_end_date: false,
+            end_date: chrono::Local::now().date_naive(),
+            end_time: (23, 59),
+            station_handler: SMT::StationHandler::new(),
         }
     }
 }
 
 // start_date, start_time, use_end_date, end_date, end_time
-type TimeFrame<'a> = (&'a NaiveDate, &'a (u32, u32), &'a bool, &'a NaiveDate, &'a (u32, u32));
+type TimeFrame<'a> = (
+    &'a NaiveDate,
+    &'a (u32, u32),
+    &'a bool,
+    &'a NaiveDate,
+    &'a (u32, u32),
+);
 
 impl eframe::App for SmtYieldApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-
-
-
         egui::SidePanel::left("settings_panel")
             .exact_width(250.0)
             .show(ctx, |ui| {
-
                 // start time
                 ui.horizontal(|ui| {
                     ui.add_space(26.0);
@@ -124,21 +125,9 @@ impl eframe::App for SmtYieldApp {
                         .width(50.0)
                         .selected_text(self.station_handler.print_selected_station())
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut new_station,
-                                Some(SMT::Station::Aoi),
-                                "AOI",
-                            );
-                            ui.selectable_value(
-                                &mut new_station,
-                                Some(SMT::Station::Ict),
-                                "ICT",
-                            );
-                            ui.selectable_value(
-                                &mut new_station,
-                                Some(SMT::Station::Fct),
-                                "FCT",
-                            );
+                            ui.selectable_value(&mut new_station, Some(SMT::Station::Aoi), "AOI");
+                            ui.selectable_value(&mut new_station, Some(SMT::Station::Ict), "ICT");
+                            ui.selectable_value(&mut new_station, Some(SMT::Station::Fct), "FCT");
                         });
 
                     if let Some(ns) = new_station {
@@ -149,13 +138,19 @@ impl eframe::App for SmtYieldApp {
                 ui.separator();
 
                 // station specific settings
-                let timeframe: TimeFrame<'_> = (&self.start_date, &self.start_time, &self.use_end_date, &self.end_date, &self.end_time);
+                let timeframe: TimeFrame<'_> = (
+                    &self.start_date,
+                    &self.start_time,
+                    &self.use_end_date,
+                    &self.end_date,
+                    &self.end_time,
+                );
                 self.station_handler.side_panel(ctx, ui, timeframe);
                 ui.separator();
             });
 
-            egui::CentralPanel::default().show(ctx, |ui| {
-                self.station_handler.central_panel(ctx, ui);
-            });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.station_handler.central_panel(ctx, ui);
+        });
     }
 }

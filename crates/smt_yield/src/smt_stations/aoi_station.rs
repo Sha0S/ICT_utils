@@ -132,7 +132,7 @@ impl Product {
 enum ActivePanel {
     PseudoErrors,
     Timeline,
-    ErrorList
+    ErrorList,
 }
 
 #[derive(Debug)]
@@ -356,7 +356,7 @@ impl AoiStation {
             let client = client_opt.as_mut().unwrap();
             /*
                 SELECT q1.Serial_NMBR, q1.Date_Time, q1.Station, q1.Program, q1.Variant, q1.Operator, q1.Result, q1.Data
-                FROM dbo.SMT_AOI_RESULTS q1 INNER JOIN 
+                FROM dbo.SMT_AOI_RESULTS q1 INNER JOIN
                 (
                 SELECT Serial_NMBR, Program, MAX(Date_Time) AS Time
                 FROM dbo.SMT_AOI_RESULTS
@@ -454,15 +454,17 @@ impl AoiStation {
                     format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
 
                 let mut counter =
-                    AOI_log_file::helpers::PseudoErrC::generate(limit,&boards.lock().unwrap());
+                    AOI_log_file::helpers::PseudoErrC::generate(limit, &boards.lock().unwrap());
 
                 counter.sort_by_ip_id(None);
                 *error_counter.lock().unwrap() = Some(counter);
 
-                let daily = AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
+                let daily =
+                    AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
                 *error_daily.lock().unwrap() = Some(daily);
 
-                let elist = AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
+                let elist =
+                    AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
                 *error_list.lock().unwrap() = Some(elist);
 
                 *status.lock().unwrap() = Status::Standby;
@@ -503,12 +505,13 @@ impl AoiStation {
 
         tokio::spawn(async move {
             let mut counter =
-                    AOI_log_file::helpers::PseudoErrC::generate(limit,&boards.lock().unwrap());
+                AOI_log_file::helpers::PseudoErrC::generate(limit, &boards.lock().unwrap());
 
             counter.sort_by_ip_id(None);
             *error_counter.lock().unwrap() = Some(counter);
 
-            let daily = AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
+            let daily =
+                AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
             *error_daily.lock().unwrap() = Some(daily);
 
             let elist = AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
@@ -615,12 +618,12 @@ impl AoiStation {
 
         if self.active_panel == ActivePanel::PseudoErrors {
             if let Some(counter) = self.error_counter.lock().unwrap().as_mut() {
-
                 ui.horizontal(|ui| {
                     ui.label("Hiba limit:");
-                    if ui.add(
-                      egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
-                    ).lost_focus() {
+                    if ui
+                        .add(egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100))
+                        .lost_focus()
+                    {
                         limit_changed = true;
                     }
                 });
@@ -631,7 +634,7 @@ impl AoiStation {
                 TableBuilder::new(ui)
                     .id_salt("Pszeudo")
                     .striped(true)
-                    .auto_shrink( [false, true])
+                    .auto_shrink([false, true])
                     .cell_layout(Layout::from_main_dir_and_cross_align(
                         egui::Direction::LeftToRight,
                         egui::Align::Center,
@@ -730,9 +733,10 @@ impl AoiStation {
                     ui.selectable_value(&mut self.pseudo_errors, false, "Valós hibák");
                     ui.add_space(30.0);
                     ui.label("Hiba limit:");
-                    if ui.add(
-                      egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
-                    ).lost_focus() {
+                    if ui
+                        .add(egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100))
+                        .lost_focus()
+                    {
                         limit_changed = true;
                     }
                 });
@@ -745,7 +749,6 @@ impl AoiStation {
                     )
                     .show(ui, |ui| {
                         if self.daily {
-
                             ui.add_space(50.0);
                             ui.heading("Fejlesztés alatt.");
                             ui.add_space(50.0);
@@ -845,7 +848,7 @@ impl AoiStation {
                                     .id_salt(&inspection_plan.name)
                                     .striped(true)
                                     .vscroll(false)
-                                    .auto_shrink( [false, true])
+                                    .auto_shrink([false, true])
                                     .cell_layout(Layout::from_main_dir_and_cross_align(
                                         egui::Direction::LeftToRight,
                                         egui::Align::Center,
@@ -911,12 +914,12 @@ impl AoiStation {
                                                 row.col(|ui| {
                                                     ui.label("Hiba átlag");
                                                 });
-    
+
                                                 for week in inspection_plan.weeks.iter() {
                                                     row.col(|ui| {
                                                         ui.label(format!(
                                                             "{:.2}",
-                                                                week.pseudo_errors_per_board
+                                                            week.pseudo_errors_per_board
                                                         ));
                                                     });
                                                 }
@@ -925,17 +928,19 @@ impl AoiStation {
                                                 row.col(|ui| {
                                                     ui.label("Delta");
                                                 });
-    
+
                                                 let mut last_week = None;
-    
+
                                                 for week in inspection_plan.weeks.iter() {
                                                     row.col(|ui| {
                                                         if let Some(i) = last_week {
-                                                            let delta = week.pseudo_errors_per_board - i;
-                                                            let deltap = 
-                                                                (week.pseudo_errors_per_board / i - 1.0)
+                                                            let delta =
+                                                                week.pseudo_errors_per_board - i;
+                                                            let deltap =
+                                                                (week.pseudo_errors_per_board / i
+                                                                    - 1.0)
                                                                     * 100.0;
-    
+
                                                             ui.vertical(|ui| {
                                                                 ui.label(
                                                                     RichText::new(format!(
@@ -948,7 +953,7 @@ impl AoiStation {
                                                                         Color32::GREEN
                                                                     }),
                                                                 );
-    
+
                                                                 ui.label(
                                                                     RichText::new(format!(
                                                                         "{:+.2}%",
@@ -962,8 +967,9 @@ impl AoiStation {
                                                                 );
                                                             });
                                                         }
-    
-                                                        last_week = Some(week.pseudo_errors_per_board);
+
+                                                        last_week =
+                                                            Some(week.pseudo_errors_per_board);
                                                     });
                                                 }
                                             });
@@ -972,13 +978,13 @@ impl AoiStation {
                                                 row.col(|ui| {
                                                     ui.label("PPM");
                                                 });
-    
+
                                                 for week in inspection_plan.weeks.iter() {
                                                     row.col(|ui| {
-                                                        let ppm = week.r_failed_boards as f32 * (1_000_000.0 / week.total_boards as f32 );
-                                                        ui.label(format!(
-                                                            "{:.2}", ppm
-                                                        ));
+                                                        let ppm = week.r_failed_boards as f32
+                                                            * (1_000_000.0
+                                                                / week.total_boards as f32);
+                                                        ui.label(format!("{:.2}", ppm));
                                                     });
                                                 }
                                             });
@@ -986,9 +992,9 @@ impl AoiStation {
                                                 row.col(|ui| {
                                                     ui.label("Delta");
                                                 });
-    
+
                                                 let mut last_week = None;
-    
+
                                                 for week in inspection_plan.weeks.iter() {
                                                     row.col(|ui| {
                                                         if let Some(i) = last_week {
@@ -1004,7 +1010,7 @@ impl AoiStation {
                                                                 (week.real_errors_per_board / i - 1.0)
                                                                     * 100.0
                                                             };
-    
+
                                                             ui.vertical(|ui| {
                                                                 ui.label(
                                                                     RichText::new(format!(
@@ -1017,7 +1023,7 @@ impl AoiStation {
                                                                         Color32::GREEN
                                                                     }),
                                                                 );
-    
+
                                                                 ui.label(
                                                                     RichText::new(format!(
                                                                         "{:+.2}%",
@@ -1031,7 +1037,7 @@ impl AoiStation {
                                                                 );
                                                             });
                                                         }
-    
+
                                                         last_week = Some(if self.pseudo_errors {
                                                             week.pseudo_errors_per_board
                                                         } else {
@@ -1040,7 +1046,7 @@ impl AoiStation {
                                                     });
                                                 }
                                             });*/
-                                        }                                        
+                                        }
                                     });
                             }
                         }
@@ -1050,9 +1056,10 @@ impl AoiStation {
             if let Some(list) = self.error_list.lock().unwrap().as_ref() {
                 ui.horizontal(|ui| {
                     ui.label("Hiba limit:");
-                    if ui.add(
-                      egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100)  
-                    ).lost_focus() {
+                    if ui
+                        .add(egui::DragValue::new(&mut self.error_limit_per_board).range(0..=100))
+                        .lost_focus()
+                    {
                         limit_changed = true;
                     }
                 });
@@ -1072,7 +1079,7 @@ impl AoiStation {
                                 .id_salt(&inspection_plan.name)
                                 .striped(true)
                                 .vscroll(false)
-                                .auto_shrink( [false, true])
+                                .auto_shrink([false, true])
                                 .cell_layout(Layout::from_main_dir_and_cross_align(
                                     egui::Direction::LeftToRight,
                                     egui::Align::Center,
@@ -1081,21 +1088,24 @@ impl AoiStation {
                                 .column(Column::auto().at_least(100.0)) // DateTime
                                 .column(Column::remainder().at_least(200.0)) // Positions
                                 .body(|mut body| {
-
                                     for board in &inspection_plan.failed_boards {
                                         body.row(20.0, |mut row| {
                                             row.col(|ui| {
-                                                ui.label( &board.barcode );
+                                                ui.label(&board.barcode);
                                             });
                                             row.col(|ui| {
-                                                ui.label( board.date_time.format("%Y-%m-%d %H:%M:%S").to_string() );
+                                                ui.label(
+                                                    board
+                                                        .date_time
+                                                        .format("%Y-%m-%d %H:%M:%S")
+                                                        .to_string(),
+                                                );
                                             });
                                             row.col(|ui| {
-                                                ui.label( board.failed_positions.join(", ") );
+                                                ui.label(board.failed_positions.join(", "));
                                             });
                                         });
                                     }
-                                    
                                 });
                         }
                     });
@@ -1105,9 +1115,7 @@ impl AoiStation {
         if limit_changed {
             self.reload_after_limit_change(ctx)
         }
-
     }
-
 }
 
 fn colapsing_button(ui: &mut egui::Ui, b: &mut bool) {

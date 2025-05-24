@@ -2,12 +2,15 @@ use egui_extras::{Column, TableBuilder};
 
 pub struct FctOverlay {
     enabled: bool,
-    pos: ICT_config::OverlayPos
+    pos: ICT_config::OverlayPos,
 }
 
 impl FctOverlay {
-    pub fn new(pos:  ICT_config::OverlayPos) -> Self {
-        Self { enabled: false, pos }
+    pub fn new(pos: ICT_config::OverlayPos) -> Self {
+        Self {
+            enabled: false,
+            pos,
+        }
     }
 
     pub fn enabled(&self) -> bool {
@@ -28,12 +31,18 @@ impl FctOverlay {
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("FctOverlay"),
             egui::ViewportBuilder::default()
-                .with_position(egui::Pos2 { x: self.pos.x, y: self.pos.y })
-                .with_inner_size(egui::Vec2 { x: self.pos.w, y: self.pos.h })
+                .with_position(egui::Pos2 {
+                    x: self.pos.x,
+                    y: self.pos.y,
+                })
+                .with_inner_size(egui::Vec2 {
+                    x: self.pos.w,
+                    y: self.pos.h,
+                })
                 .with_decorations(false)
-                .with_window_level(egui::WindowLevel::AlwaysOnTop), 
-                //.with_mouse_passthrough(true)
-                //.with_transparent(true)
+                .with_window_level(egui::WindowLevel::AlwaysOnTop),
+            //.with_mouse_passthrough(true)
+            //.with_transparent(true)
             |ctx, class| {
                 assert!(
                     class == egui::ViewportClass::Immediate,
@@ -52,8 +61,7 @@ impl FctOverlay {
                 egui::CentralPanel::default()
                     //.frame(egui::Frame::none())
                     .show(ctx, |ui| {
-                        let rows = ((self.pos.h - 30.0) / (14.0+3.0)).floor().max(1.0) as usize;
-
+                        let rows = ((self.pos.h - 30.0) / (14.0 + 3.0)).floor().max(1.0) as usize;
 
                         TableBuilder::new(ui)
                             .striped(true)
@@ -87,7 +95,7 @@ impl FctOverlay {
 
                                     body.row(14.0, |mut row| {
                                         row.col(|ui| {
-                                            ui.label(crate::u64_to_timeframe(hour.0));
+                                            ui.label(crate::naivedatetime_to_timeframe(hour.0));
                                         });
                                         row.col(|ui| {
                                             ui.label(format!("{}", used_yield.0));

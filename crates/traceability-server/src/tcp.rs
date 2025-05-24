@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use anyhow::bail;
+use chrono::NaiveDateTime;
 use log::{debug, error, info, warn};
 use std::{
     fs, io,
@@ -8,10 +9,7 @@ use std::{
     sync::{mpsc::SyncSender, Arc, Mutex},
 };
 use tiberius::{Client, Query};
-use tokio::{
-    io::Interest,
-    net::TcpStream,
-};
+use tokio::{io::Interest, net::TcpStream};
 use tokio_stream::StreamExt;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
@@ -484,12 +482,12 @@ impl TcpServer {
         }
 
         let mut ict_logs = Vec::new();
-        let mut t_max_u64: u64 = 0;
+        let mut t_max: NaiveDateTime = NaiveDateTime::default();
         for log in logs {
             debug!("Parsing log: {log}");
             if let Ok(l) = ICT_log_file::LogFile::load(&PathBuf::from(&log)) {
                 if l.is_ok() {
-                    t_max_u64 = t_max_u64.max(l.get_time_end());
+                    t_max = t_max.max(l.get_time_end());
                     ict_logs.push(l);
                 } else {
                     error!("Could not process log: {log}");
@@ -500,8 +498,6 @@ impl TcpServer {
                 bail!("Logfile parsing failed!");
             }
         }
-
-        debug!("T_max: {}", t_max_u64);
 
         if ict_logs.is_empty() {
             error!("ICT log buffer is empty!");
@@ -528,7 +524,6 @@ impl TcpServer {
             VALUES",
         );
 
-        let t_max = ICT_log_file::u64_to_time(t_max_u64);
         for log in ict_logs {
             let mut final_note = note.clone();
             if log.get_status() != 0 {
@@ -571,7 +566,6 @@ impl TcpServer {
     }
 
     async fn upload_panel(&mut self, log: &str) -> anyhow::Result<String> {
-
         let ict_logs = ICT_log_file::LogFile::load_panel(&PathBuf::from(log));
 
         if ict_logs.is_err() {
@@ -581,14 +575,12 @@ impl TcpServer {
 
         let ict_logs = ict_logs.unwrap();
 
-        let mut t_max_u64: u64 = 0;
+        let mut t_max = NaiveDateTime::default();
         for log in &ict_logs {
-            if t_max_u64 < log.get_time_end() {
-                t_max_u64 = log.get_time_end();
+            if t_max < log.get_time_end() {
+                t_max = log.get_time_end();
             }
         }
-
-        debug!("T_max: {}", t_max_u64);
 
         if ict_logs.is_empty() {
             error!("ICT log buffer is empty!");
@@ -608,7 +600,6 @@ impl TcpServer {
             VALUES",
         );
 
-        let t_max = ICT_log_file::u64_to_time(t_max_u64);
         for log in ict_logs {
             let mut final_note = String::new();
             if log.get_status() != 0 {
@@ -698,7 +689,7 @@ impl TcpServer {
         let mut logs = Vec::new();
 
         for lp in log_paths {
-            match ICT_log_file::LogFile::load_FCT(&lp) {
+            match ICT_log_file::LogFile::load_Kaizen_FCT(&lp) {
                 Ok(log) => {
                     if log.get_mes_enabled() {
                         logs.push(log);
@@ -738,7 +729,7 @@ impl TcpServer {
                 } else {
                     "Failed"
                 },
-                ICT_log_file::u64_to_time(log.get_time_end()),
+                log.get_time_end(),
                 log.get_SW_ver(),
                 note,
             );
@@ -794,7 +785,7 @@ impl TcpServer {
         };
 
         // Is it a FCT log?
-        if fct_log.get_type() != ICT_log_file::LogFileType::FCT {
+        if fct_log.get_type() != ICT_log_file::LogFileType::FCT_Kaizen {
             error!("Logfile is not a FCT log!");
             bail!("Logfile is not a FCT log!");
         }
@@ -831,7 +822,7 @@ impl TcpServer {
             } else {
                 "Failed"
             },
-            ICT_log_file::u64_to_time(fct_log.get_time_end()),
+            fct_log.get_time_end(),
             fct_log.get_SW_ver(),
             note,
         );

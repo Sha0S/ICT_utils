@@ -1,6 +1,2 @@
-
-
 #[derive(Debug, Default)]
-pub struct IctStation {
-
-}
+pub struct IctStation {}

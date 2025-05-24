@@ -1,7 +1,9 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use egui::Vec2;
-
 
 pub fn search_for_log(src: &str) -> Option<PathBuf> {
     println!("Searching for {src}");
@@ -14,7 +16,7 @@ pub fn search_for_log(src: &str) -> Option<PathBuf> {
         let dir = path.parent()?;
         let file = path.file_name()?;
         let (_, date_str) = file.to_str()?.split_once('-')?;
-        
+
         if date_str.len() > 6 {
             let sub_dir = format!(
                 "20{}_{}_{}",
@@ -24,7 +26,7 @@ pub fn search_for_log(src: &str) -> Option<PathBuf> {
             );
             let mut final_path = dir.join(sub_dir);
             final_path.push(file);
-    
+
             println!("Final path: {:?}", final_path);
             if final_path.exists() {
                 return Some(final_path);
@@ -37,12 +39,14 @@ pub fn search_for_log(src: &str) -> Option<PathBuf> {
 }
 
 struct SLog {
-    path_found: Option<PathBuf>
+    path_found: Option<PathBuf>,
 }
 
 impl SLog {
     fn new(src: &str) -> Self {
-        SLog { path_found: search_for_log(src)}
+        SLog {
+            path_found: search_for_log(src),
+        }
     }
 
     fn found(&self) -> bool {
@@ -56,7 +60,7 @@ impl SLog {
 
             let mut out_path = PathBuf::from(output_dir);
             out_path.push(filename);
-            
+
             println!("Out path: {:?}", out_path);
             if fs::copy(path, out_path).is_ok() {
                 println!("\tSuccess!")
@@ -65,10 +69,10 @@ impl SLog {
             }
         }
     }
-} 
+}
 
 struct SPanel {
-    logs: Vec<SLog>
+    logs: Vec<SLog>,
 }
 
 impl SPanel {
@@ -92,7 +96,7 @@ pub struct ScanForLogs {
     selected: usize,
     only_save_selected: bool,
 
-    enabled: bool
+    enabled: bool,
 }
 
 impl ScanForLogs {
@@ -155,8 +159,11 @@ impl ScanForLogs {
 
                 egui::TopBottomPanel::top("DatePicker").show(ctx, |ui| {
                     ui.monospace(format!("Megtalált logok: {}/{}.", self.found, self.total));
-                    ui.checkbox(&mut self.only_save_selected, "Csak a kijelölt board logjait mentse.");
-                    
+                    ui.checkbox(
+                        &mut self.only_save_selected,
+                        "Csak a kijelölt board logjait mentse.",
+                    );
+
                     if ui.button("Mentés").clicked() {
                         self.save_logs();
                     }
@@ -171,7 +178,7 @@ impl ScanForLogs {
                                 draw_result_box(ui, lo.found(), self.selected == i);
                             }
                         });
-                    } 
+                    }
                 });
 
                 if ctx.input(|i| i.viewport().close_requested()) {
@@ -192,7 +199,15 @@ fn draw_result_box(ui: &mut egui::Ui, result: bool, highlight: bool) -> egui::Re
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);
         let rect = rect.expand(visuals.expansion);
-        ui.painter().rect_filled(rect, 2.0, if result {egui::Color32::GREEN} else {egui::Color32::RED});
+        ui.painter().rect_filled(
+            rect,
+            2.0,
+            if result {
+                egui::Color32::GREEN
+            } else {
+                egui::Color32::RED
+            },
+        );
     }
 
     response

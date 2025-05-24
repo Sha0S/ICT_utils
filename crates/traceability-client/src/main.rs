@@ -38,7 +38,7 @@ fn main() -> std::io::Result<()> {
         println!("ER: No argument found!");
         return Ok(());
     }
-    
+
     // The current working directory will be not the directory of the executable,
     // So we will need to make absolut paths for .\config and .\golden_samples
     let exe_path = env::current_exe().expect("ER: Can't read the directory of the executable!"); // Shouldn't fail.
@@ -56,15 +56,14 @@ fn main() -> std::io::Result<()> {
         println!("ER: Configuartion is missing the adress of the MES server!")
     }
 
-    
     let address: &str;
     let tokens: Vec<&str>;
     if args[1].to_lowercase() == "-ip" {
         address = &args[2];
-        tokens = args.iter().skip(3).map(|f| f.trim() ).collect();
+        tokens = args.iter().skip(3).map(|f| f.trim()).collect();
     } else {
         address = config.get_MES_server();
-        tokens = args.iter().skip(1).map(|f| f.trim() ).collect();
+        tokens = args.iter().skip(1).map(|f| f.trim()).collect();
     }
 
     let message = tokens.join("|");
@@ -72,9 +71,11 @@ fn main() -> std::io::Result<()> {
     let mut stream = TcpStream::connect(address)?;
     stream.write_all(message.as_bytes())?;
 
-    let mut buf = [0;1024];
+    let mut buf = [0; 1024];
     if stream.read(&mut buf).is_ok() {
-        let message = String::from_utf8_lossy(&buf).trim_end_matches('\0').to_string();
+        let message = String::from_utf8_lossy(&buf)
+            .trim_end_matches('\0')
+            .to_string();
         println!("{message}");
     } else {
         println!("ER: Failed to read response from server!");

@@ -5,7 +5,11 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use log::{debug, error, info, warn};
 use std::{
-    collections::HashSet, fs, path::PathBuf, sync::mpsc::{self, SyncSender}, time::Duration
+    collections::HashSet,
+    fs,
+    path::PathBuf,
+    sync::mpsc::{self, SyncSender},
+    time::Duration,
 };
 use tiberius::{Client, Query};
 use tokio::{net::TcpStream, time::sleep};
@@ -26,7 +30,6 @@ async fn main() -> Result<()> {
 
     // SQL uploader thread
     tokio::spawn(async move {
-        
         let config = ICT_config::Config::read(ICT_config::CONFIG);
         if config.is_err() {
             error!("Failed to load configuration! Terminating.");
@@ -38,24 +41,21 @@ async fn main() -> Result<()> {
         if config.get_aoi_dir().is_empty() {
             error!("Configuration is missing AOI dir field!");
             sql_tx.send(Message::FatalError).unwrap();
-            return;  
+            return;
         }
 
         let log_dir = PathBuf::from(config.get_aoi_dir());
         let tminus = Duration::from_secs(config.get_aoi_tminus());
 
-        let mut client = 
-        loop {
-            if let Ok(client) =  create_connection(&config).await {
+        let mut client = loop {
+            if let Ok(client) = create_connection(&config).await {
                 break client;
             }
 
             sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
             error!("Failed to connect to the SQL server, retrying in 60s.");
             sleep(Duration::from_secs(60)).await;
-        }
-        ;        
-
+        };
 
         sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
 
@@ -65,7 +65,6 @@ async fn main() -> Result<()> {
 
         // Uploader main loop
         loop {
-
             // 0 - check connection, reconnect if needed
             loop {
                 match client.execute("SELECT 1", &[]).await {
@@ -74,21 +73,18 @@ async fn main() -> Result<()> {
                     }
                     Err(_) => {
                         warn!("Connection to DB lost, reconnecting!");
-                        client = 
-                        loop {
-                            if let Ok(client) =  create_connection(&config).await {
+                        client = loop {
+                            if let Ok(client) = create_connection(&config).await {
                                 break client;
                             }
 
                             sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                             error!("Failed to connect to the SQL server, retrying in 60s.");
                             sleep(Duration::from_secs(60)).await;
-                        }
-                        ;  
+                        };
                     }
                 }
             }
-
 
             debug!("AOI auto update started");
             let start_time = chrono::Local::now();
@@ -97,7 +93,7 @@ async fn main() -> Result<()> {
 
             // 1 - get date_time of the last update
             if let Ok(last_date) = ICT_config::get_last_date() {
-                let last_date = last_date - tminus; 
+                let last_date = last_date - tminus;
 
                 // 2 - get possible directories
                 //let target_dirs = get_subdirs_for_aoi(&log_dir, &last_date);
@@ -116,7 +112,7 @@ async fn main() -> Result<()> {
                             debug!("Buffer already contains log. Skipping!")
                         } else {
                             if let Ok(plog) = AOI_log_file::Panel::load_xml(&log) {
-                                    processed_logs.push(plog);
+                                processed_logs.push(plog);
                             } else {
                                 error!("Failed to process log: {:?}", log);
                             }
@@ -135,7 +131,6 @@ async fn main() -> Result<()> {
                         );
 
                         for panel in chunk {
-
                             let time;
                             let operator;
                             if let Some(rep) = &panel.repair {
@@ -146,12 +141,9 @@ async fn main() -> Result<()> {
                                 time = panel.inspection_date_time.unwrap();
                             }
 
-                            
-
                             for board in &panel.boards {
-
                                 let data = serde_json::to_string(&board.windows).unwrap();
-                    
+
                                 qtext += &format!(
                                     "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
                                     board.barcode,
@@ -174,8 +166,6 @@ async fn main() -> Result<()> {
 
                         debug!("Result: {:?}", result);
 
-                        
-
                         if let Err(e) = result {
                             all_ok = false;
                             error!("Upload failed: {e}");
@@ -193,7 +183,6 @@ async fn main() -> Result<()> {
                             error!("Failed to update last_time! {}", e);
                         };
                         log_buffer = new_log_buffer;
-
                     } else {
                         sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
                         error!("Upload failed - not setting new last_date");
@@ -207,10 +196,11 @@ async fn main() -> Result<()> {
 
             if new_logs > 0 {
                 let delta_t = chrono::Local::now() - start_time;
-                info!("Uploaded {new_logs} new results in {}s (skipped: {skipped_logs})", delta_t.num_seconds());
+                info!(
+                    "Uploaded {new_logs} new results in {}s (skipped: {skipped_logs})",
+                    delta_t.num_seconds()
+                );
             }
-            
-
 
             // wait and repeat
             sleep(Duration::from_secs(config.get_aoi_deltat())).await;
@@ -269,37 +259,39 @@ async fn connect(
     Ok(client)
 }
 
-async fn create_connection(config: &ICT_config::Config) -> Result<Client<tokio_util::compat::Compat<TcpStream>>> {
-        // Tiberius configuartion:
+async fn create_connection(
+    config: &ICT_config::Config,
+) -> Result<Client<tokio_util::compat::Compat<TcpStream>>> {
+    // Tiberius configuartion:
 
-        let sql_server = config.get_server().to_owned();
-        let sql_user = config.get_username().to_owned();
-        let sql_pass = config.get_password().to_owned();
-    
-        let mut tib_config = tiberius::Config::new();
-        tib_config.host(sql_server);
-        tib_config.authentication(tiberius::AuthMethod::sql_server(sql_user, sql_pass));
-        tib_config.trust_cert(); // Most likely not needed.
-    
-        let mut client_tmp = connect(tib_config.clone()).await;
-        let mut tries = 0;
-        while client_tmp.is_err() && tries < 3 {
-            client_tmp = connect(tib_config.clone()).await;
-            tries += 1;
-        }
-    
-        if client_tmp.is_err() {
-            bail!("Connection to DB failed!")
-        }
-        let mut client = client_tmp?;
-    
-        // USE [DB]
-        let qtext = format!("USE [{}]", config.get_database());
-        debug!("USE DB: {}", qtext);
-        let query = Query::new(qtext);
-        query.execute(&mut client).await?;
+    let sql_server = config.get_server().to_owned();
+    let sql_user = config.get_username().to_owned();
+    let sql_pass = config.get_password().to_owned();
 
-        Ok(client)
+    let mut tib_config = tiberius::Config::new();
+    tib_config.host(sql_server);
+    tib_config.authentication(tiberius::AuthMethod::sql_server(sql_user, sql_pass));
+    tib_config.trust_cert(); // Most likely not needed.
+
+    let mut client_tmp = connect(tib_config.clone()).await;
+    let mut tries = 0;
+    while client_tmp.is_err() && tries < 3 {
+        client_tmp = connect(tib_config.clone()).await;
+        tries += 1;
+    }
+
+    if client_tmp.is_err() {
+        bail!("Connection to DB failed!")
+    }
+    let mut client = client_tmp?;
+
+    // USE [DB]
+    let qtext = format!("USE [{}]", config.get_database());
+    debug!("USE DB: {}", qtext);
+    let query = Query::new(qtext);
+    query.execute(&mut client).await?;
+
+    Ok(client)
 }
 
 fn get_logs(target_dirs: Vec<PathBuf>, last_date: DateTime<Local>) -> Result<Vec<PathBuf>> {
@@ -310,11 +302,10 @@ fn get_logs(target_dirs: Vec<PathBuf>, last_date: DateTime<Local>) -> Result<Vec
             let file = file?;
             let path = file.path();
 
-            if path.is_file() && path.extension().is_some_and(|f| f == "xml" || f =="XML") {
+            if path.is_file() && path.extension().is_some_and(|f| f == "xml" || f == "XML") {
                 if let Ok(x) = path.metadata() {
                     let ct: chrono::DateTime<chrono::Local> = x.modified().unwrap().into();
                     if ct >= last_date {
-
                         // filtering temporary files from AOI / AXI
                         if let Some(filestem) = path.file_stem() {
                             let filestem = filestem.to_string_lossy();

@@ -70,15 +70,21 @@ impl Board {
                         }
                     }
                     "Recipe" => {
-                        // C:\AOI_DATA64\Recipe\RSA INV Control Board bot.rcp64 -> BOT 
-                        // C:\AOI_DATA64\Recipe\RSA INV Control Board top.rcp64 -> TOP 
+                        // C:\AOI_DATA64\Recipe\RSA INV Control Board bot.rcp64 -> BOT
+                        // C:\AOI_DATA64\Recipe\RSA INV Control Board top.rcp64 -> TOP
 
                         // this is probably overcomplicated
-                        if let Some((file_name,_)) = value.rsplit_once('.') {
+                        if let Some((file_name, _)) = value.rsplit_once('.') {
                             if file_name.len() > 3 {
                                 side = file_name
-                                    .chars().rev().take(3).collect::<Vec<_>>()
-                                    .into_iter().rev().collect::<String>().to_ascii_uppercase();
+                                    .chars()
+                                    .rev()
+                                    .take(3)
+                                    .collect::<Vec<_>>()
+                                    .into_iter()
+                                    .rev()
+                                    .collect::<String>()
+                                    .to_ascii_uppercase();
                             }
                         };
                     }

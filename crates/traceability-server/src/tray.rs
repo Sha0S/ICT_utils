@@ -10,7 +10,7 @@ pub enum IconCollor {
     Yellow,
     Red,
     Grey,
-    Purple
+    Purple,
 }
 pub enum Message {
     Quit,
@@ -27,7 +27,7 @@ pub enum Message {
     AddGS,
     NewGS(winsafe::AnyResult<String>),
     UpdateTimer,
-    StartFctUpdate
+    StartFctUpdate,
 }
 
 pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
@@ -36,7 +36,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     let mut tray =
         TrayItem::new("ICT Traceability Server", IconSource::Resource("red-icon")).unwrap();
 
-    ret.push( // 0
+    ret.push(
+        // 0
         tray.inner_mut()
             .add_label_with_id("ICT Traceability Server")
             .unwrap(),
@@ -45,7 +46,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     tray.inner_mut().add_separator().unwrap();
 
     let tx_clone = tx.clone();
-    ret.push( // 1
+    ret.push(
+        // 1
         tray.inner_mut()
             .add_menu_item_with_id("Login", move || {
                 tx_clone.send(Message::LogInStart).unwrap();
@@ -54,7 +56,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     );
 
     let tx_clone = tx.clone();
-    ret.push( // 2
+    ret.push(
+        // 2
         tray.inner_mut()
             .add_menu_item_with_id("", move || {
                 tx_clone.send(Message::SetMode(AppMode::Enabled)).unwrap();
@@ -63,7 +66,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     );
 
     let tx_clone = tx.clone();
-    ret.push( // 3
+    ret.push(
+        // 3
         tray.inner_mut()
             .add_menu_item_with_id("", move || {
                 tx_clone.send(Message::SetMode(AppMode::OffLine)).unwrap();
@@ -72,7 +76,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     );
 
     let tx_clone = tx.clone();
-    ret.push( // 4
+    ret.push(
+        // 4
         tray.inner_mut()
             .add_menu_item_with_id("", move || {
                 tx_clone.send(Message::SetMode(AppMode::Override)).unwrap();
@@ -81,7 +86,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     );
 
     let tx_clone = tx.clone();
-    ret.push( // 5
+    ret.push(
+        // 5
         tray.inner_mut()
             .add_menu_item_with_id("", move || {
                 tx_clone.send(Message::LogOut).unwrap();
@@ -92,7 +98,8 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
     tray.inner_mut().add_separator().unwrap();
 
     let tx_clone = tx.clone();
-    ret.push( // 6
+    ret.push(
+        // 6
         tray.inner_mut()
             .add_menu_item_with_id("", move || {
                 tx_clone.send(Message::AddGS).unwrap();
@@ -122,24 +129,48 @@ pub fn init_tray(tx: SyncSender<Message>) -> (TrayItem, Vec<u32>) {
 }
 
 pub fn update_tray_login(tray: &mut TrayItem, tray_ids: &[u32], level: UserLevel) {
-    tray.inner_mut().set_menu_item_label("Enable MES", tray_ids[2]).unwrap();
-    tray.inner_mut().set_menu_item_label("Go Offline", tray_ids[3]).unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("Enable MES", tray_ids[2])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("Go Offline", tray_ids[3])
+        .unwrap();
 
     if level > UserLevel::Technician {
-        tray.inner_mut().set_menu_item_label("Override MES", tray_ids[4]).unwrap();
+        tray.inner_mut()
+            .set_menu_item_label("Override MES", tray_ids[4])
+            .unwrap();
     } else {
-        tray.inner_mut().set_menu_item_label("", tray_ids[4]).unwrap();
+        tray.inner_mut()
+            .set_menu_item_label("", tray_ids[4])
+            .unwrap();
     }
 
-    tray.inner_mut().set_menu_item_label("Logout", tray_ids[5]).unwrap();
-    tray.inner_mut().set_menu_item_label("Add GS", tray_ids[6]).unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("Logout", tray_ids[5])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("Add GS", tray_ids[6])
+        .unwrap();
 }
 
 pub fn update_tray_logout(tray: &mut TrayItem, tray_ids: &[u32]) {
-    tray.inner_mut().set_label("ICT Traceability Server", tray_ids[0]).unwrap();
-    tray.inner_mut().set_menu_item_label("", tray_ids[2]).unwrap();
-    tray.inner_mut().set_menu_item_label("", tray_ids[3]).unwrap();
-    tray.inner_mut().set_menu_item_label("", tray_ids[4]).unwrap();
-    tray.inner_mut().set_menu_item_label("", tray_ids[5]).unwrap();
-    tray.inner_mut().set_menu_item_label("", tray_ids[6]).unwrap();
+    tray.inner_mut()
+        .set_label("ICT Traceability Server", tray_ids[0])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("", tray_ids[2])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("", tray_ids[3])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("", tray_ids[4])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("", tray_ids[5])
+        .unwrap();
+    tray.inner_mut()
+        .set_menu_item_label("", tray_ids[6])
+        .unwrap();
 }

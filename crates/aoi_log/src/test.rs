@@ -112,7 +112,6 @@ mod tests {
 
     #[test]
     fn ins_1() {
-
         let rep_1 = Panel::load_xml(".\\test_files\\ins_1.xml").unwrap();
         assert_eq!(rep_1.station, "JV_Line10");
         assert_eq!(rep_1.inspection_plan, "B847026_TOP");
@@ -125,10 +124,7 @@ mod tests {
                 .and_hms_opt(21, 33, 46)
         );
 
-        assert_eq!(
-            rep_1.repair,
-            None
-        );
+        assert_eq!(rep_1.repair, None);
 
         assert_eq!(
             rep_1.boards[0].barcode,
@@ -155,24 +151,12 @@ mod tests {
             "V102506600408EB847026010".to_string()
         );
 
-        assert!(
-            rep_1.boards[0].result
-        );
-        assert!(
-            !rep_1.boards[1].result
-        );
-        assert!(
-            !rep_1.boards[2].result
-        );
-        assert!(
-            rep_1.boards[3].result
-        );
-        assert!(
-            !rep_1.boards[4].result
-        );
-        assert!(
-            rep_1.boards[5].result
-        );
+        assert!(rep_1.boards[0].result);
+        assert!(!rep_1.boards[1].result);
+        assert!(!rep_1.boards[2].result);
+        assert!(rep_1.boards[3].result);
+        assert!(!rep_1.boards[4].result);
+        assert!(rep_1.boards[5].result);
 
         // Windows
 

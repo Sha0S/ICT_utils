@@ -26,7 +26,8 @@ Product Name | Boards on panel | Log file directory | DMC patterns
 pub enum TesterType {
     #[default]
     Ict,
-    Fct,
+    FctKaizen,
+    FctDcdc,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -66,7 +67,9 @@ pub fn load_product_list<P: AsRef<Path> + std::fmt::Debug>(
         }
 
         let tester_type = if modifiers.iter().any(|f| f == "#fct") {
-            TesterType::Fct
+            TesterType::FctKaizen
+        } else if modifiers.iter().any(|f| f == "#fct_dcdc") {
+            TesterType::FctDcdc
         } else {
             TesterType::Ict
         };
@@ -96,7 +99,8 @@ pub fn get_product_for_serial<P: AsRef<Path> + std::fmt::Debug>(
 
     let list = load_product_list(path, true);
 
-    list.into_iter().find(|product| product.check_serial(serial))
+    list.into_iter()
+        .find(|product| product.check_serial(serial))
 }
 
 impl Product {
@@ -175,7 +179,7 @@ pub struct OverlayPos {
     pub x: f32,
     pub y: f32,
     pub w: f32,
-    pub h: f32
+    pub h: f32,
 }
 
 #[derive(Default)]
@@ -250,7 +254,6 @@ impl Config {
                     c.AOI_dir = dir.to_owned();
                 }
 
-
                 if let Some(chunks) = app.get("CHUNKS") {
                     c.AOI_chunks = chunks.parse().unwrap_or(10);
                 }
@@ -263,8 +266,7 @@ impl Config {
                     c.AOI_deltat = chunks.parse().unwrap_or(600);
                 }
 
-                if c.AOI_dir.is_empty()
-                {
+                if c.AOI_dir.is_empty() {
                     return Err(anyhow::Error::msg(
                         "ER: Missing [AOI] - [DIR] field from configuration file!",
                     ));
@@ -528,7 +530,7 @@ pub fn generate_main_serial(serial: &str, position: u8) -> anyhow::Result<String
     // VLLDDDxxxxxxx*
     // x is 7 digits -> u32
     if let Ok(start) = serial[6..13].parse::<u32>() {
-        let sn = start - position as u32 +1;
+        let sn = start - position as u32 + 1;
 
         let mut s = serial.to_string();
         s.replace_range(6..13, &format!("{:07}", sn));
@@ -544,7 +546,6 @@ pub fn generate_main_serial(serial: &str, position: u8) -> anyhow::Result<String
 pub fn query(serial: String) -> std::result::Result<std::process::Child, std::io::Error> {
     std::process::Command::new("query.exe").arg(serial).spawn()
 }
-
 
 // last_date subrutines
 // LAST_TIME_FILE_BAK is a backup of the previous value, in case of a file corruption
@@ -562,7 +563,7 @@ pub fn get_last_date() -> anyhow::Result<chrono::DateTime<chrono::Local>> {
             };
         } else {
             error!("Parsing last_date failed: {}", line);
-        }  
+        }
     } else {
         error!("Could not read {}!", LAST_DATE_FILE);
     }
@@ -581,7 +582,7 @@ pub fn get_last_date() -> anyhow::Result<chrono::DateTime<chrono::Local>> {
             };
         } else {
             error!("Parsing last_date failed: {}", line);
-        }  
+        }
     } else {
         error!("Could not read {}!", LAST_DATE_FILE);
     }

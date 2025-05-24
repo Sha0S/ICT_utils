@@ -29,7 +29,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PRODUCT_LIST: &str = ".\\products";
 include!("locals.rs");
 
-const ACCEPTED_EXTENSION: [&str; 2] = ["ict", "csv"];
+const ACCEPTED_EXTENSION: [&str; 3] = ["ict", "csv", "pv"];
 type PathAndTime = (PathBuf, DateTime<Local>);
 
 fn get_logs_in_path(
@@ -45,12 +45,15 @@ fn get_logs_in_path(
             ret.append(&mut get_logs_in_path(&path, pm_lock.clone())?);
         } else {
             // if the path is a file and it has NO extension or the extension is in the accepted list
-            if path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
+            if path
+                .extension()
+                .is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2))
+            {
                 if let Ok(x) = path.metadata() {
-                 let ct: DateTime<Local> = x.modified().unwrap().into();
-                     ret.push((path.to_path_buf(), ct));
-                 }
-             }
+                    let ct: DateTime<Local> = x.modified().unwrap().into();
+                    ret.push((path.to_path_buf(), ct));
+                }
+            }
         }
     }
 
@@ -60,12 +63,16 @@ fn get_logs_in_path(
 // Subrutines for locating logfiles for the specified product in the specified timeframe
 
 // 1) Get a list of the possible subfolders:
-fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Option<DateTime<Local>>) -> Vec<PathBuf> {
+fn get_subdirs_for_timeframe(
+    product: &Product,
+    start: DateTime<Local>,
+    end: Option<DateTime<Local>>,
+) -> Vec<PathBuf> {
     let mut ret = Vec::new();
 
     let mut start_date = start.date_naive();
     let end_date = match end {
-        Some(x) =>x.date_naive(),
+        Some(x) => x.date_naive(),
         None => Local::now().date_naive(),
     };
 
@@ -78,12 +85,9 @@ fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Opt
         debug!("\tdate: {}", start_date);
 
         let sub_dir = match product.get_tester_type() {
-            TesterType::Ict => {
-                     start_date.format("%Y_%m_%d")
-            },
-            TesterType::Fct => {
-                start_date.format("%Y/%m/%d")
-            },
+            TesterType::Ict => start_date.format("%Y_%m_%d"),
+            TesterType::FctKaizen => start_date.format("%Y/%m/%d"),
+            TesterType::FctDcdc => start_date.format("W%W_%Y/B70016003"),
         };
 
         debug!("\tsubdir: {}", sub_dir);
@@ -91,7 +95,9 @@ fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Opt
         let new_path = product.get_log_dir().join(sub_dir.to_string());
         if new_path.exists() {
             debug!("\t\tsubdir exists");
-            ret.push(new_path);
+            if !ret.contains(&new_path) {
+                ret.push(new_path);
+            }
         }
 
         start_date = start_date.succ_opt().unwrap();
@@ -100,11 +106,13 @@ fn get_subdirs_for_timeframe(product: &Product, start: DateTime<Local>, end: Opt
     ret
 }
 
-
-
 // 2) Get list of the possible logs in the subfolders + root folder for ICT
-fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: Option<DateTime<Local>>) -> Result<Vec<PathAndTime>, std::io::Error> {
-    let mut ret  = Vec::new();
+fn get_logs_for_timeframe(
+    product: &Product,
+    start: DateTime<Local>,
+    end: Option<DateTime<Local>>,
+) -> Result<Vec<PathAndTime>, std::io::Error> {
+    let mut ret = Vec::new();
     let sub_dirs = get_subdirs_for_timeframe(product, start, end);
 
     for dir in sub_dirs {
@@ -113,12 +121,17 @@ fn get_logs_for_timeframe(product: &Product, start: DateTime<Local>, end: Option
             let path = file.path();
 
             // if the path is a file and it has NO extension or the extension is in the accepted list
-            if path.is_file() && path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
-               if let Ok(x) = path.metadata() {
-                let ct: DateTime<Local> = x.modified().unwrap().into();
-                if ct >= start && end.is_none_or(|f| ct < f ) {
-                    ret.push((path.to_path_buf(), ct));
-                }}
+            if path.is_file()
+                && path
+                    .extension()
+                    .is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2))
+            {
+                if let Ok(x) = path.metadata() {
+                    let ct: DateTime<Local> = x.modified().unwrap().into();
+                    if ct >= start && end.is_none_or(|f| ct < f) {
+                        ret.push((path.to_path_buf(), ct));
+                    }
+                }
             }
         }
     }
@@ -138,11 +151,17 @@ fn organize_root_directory(product: &Product) -> Result<(), std::io::Error> {
         let path = file.path();
         let now = Local::now();
 
-        if path.is_file() && path.extension().is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2)) {
+        if path.is_file()
+            && path
+                .extension()
+                .is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2))
+        {
             if let Ok(x) = path.metadata() {
                 let ct: DateTime<Local> = x.modified()?.into();
                 if now - ct > Duration::hours(4) {
-                    let new_dir = product.get_log_dir().join(ct.format("%Y_%m_%d").to_string());
+                    let new_dir = product
+                        .get_log_dir()
+                        .join(ct.format("%Y_%m_%d").to_string());
                     debug!("\tnew dir: {:?}", new_dir);
 
                     if !new_dir.exists() {
@@ -157,26 +176,19 @@ fn organize_root_directory(product: &Product) -> Result<(), std::io::Error> {
                     }
                 }
             }
-        }        
+        }
     }
 
     Ok(())
 }
 
-// Turn YYMMDDHH format u64 int to "YY.MM.DD HH:00 - HH:59"
-fn u64_to_timeframe(mut x: u64) -> String {
-    let y = x / u64::pow(10, 6);
-    x %= u64::pow(10, 6);
-
-    let m = x / u64::pow(10, 4);
-    x %= u64::pow(10, 4);
-
-    let d = x / u64::pow(10, 2);
-    x %= u64::pow(10, 2);
-
+// Generate "YY.MM.DD HH:00 - HH:59" string from NaiveDateTime
+fn naivedatetime_to_timeframe(dt: NaiveDateTime) -> String {
     format!(
-        "{0:02.0}.{1:02.0}.{2:02.0} {3:02.0}:00 - {3:02.0}:59",
-        y, m, d, x
+        "{:02}.{:02}. {2:02}:00 - {2:02}:59",
+        dt.month(),
+        dt.day(),
+        dt.hour()
     )
 }
 
@@ -209,7 +221,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        format!("ICT Analysis (v{VERSION})").as_str(),
+        format!("ICT/FCT Log Analysis (v{VERSION})").as_str(),
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
@@ -308,7 +320,7 @@ impl AutoUpdate {
     }
 
     fn request_update(&mut self) {
-        if self.enabled { 
+        if self.enabled {
             self.update_requested = true;
         }
     }
@@ -420,7 +432,7 @@ struct MyApp {
     selected_test_buf: String,
     selected_test_index: usize,
     selected_test_show_stats: bool,
-    selected_test_results: (TType, Vec<(u64, usize, TResult, TLimit)>),
+    selected_test_results: (TType, Vec<(NaiveDateTime, usize, TResult, TLimit)>),
     selected_test_statistics: TestStats,
 
     export_settings: ExportSettings,
@@ -436,7 +448,6 @@ impl Default for MyApp {
 
         let product_list = load_product_list(PRODUCT_LIST, false);
 
-        
         let config = ICT_config::Config::read(ICT_config::CONFIG);
         let overlay = match config {
             Ok(con) => con.get_overlay_pos(),
@@ -537,10 +548,11 @@ impl MyApp {
             if self.time_end_use {
                 Some(
                     TimeZone::from_local_datetime(
-                    &Local,
-                    &NaiveDateTime::new(self.date_end, self.time_end),
+                        &Local,
+                        &NaiveDateTime::new(self.date_end, self.time_end),
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             } else {
                 None
             }
@@ -572,7 +584,7 @@ impl MyApp {
                     } else {
                         error!("LoadMode is ProductList, but the selected product is invalid! (Empty list?)");
                         Ok(Vec::new())
-                    }    
+                    }
                 }
             };
 
@@ -605,7 +617,6 @@ impl eframe::App for MyApp {
                 if self.loading {
                     ui.disable();
                 }
-                
 
                 if ui.button("📁").clicked() && !self.loading {
                     if let Some(input_path) = rfd::FileDialog::new().pick_folder() {
@@ -695,7 +706,6 @@ impl eframe::App for MyApp {
 
             ui.horizontal(|ui| {
                 ui.horizontal(|ui| {
-
                     if !self.time_end_use {
                         ui.disable();
                     }
@@ -857,7 +867,7 @@ impl eframe::App for MyApp {
             // Failure list:
 
             ui.vertical(|ui| {
-                if self.loading{
+                if self.loading {
                     ui.disable();
                 }
                 ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
@@ -994,7 +1004,9 @@ impl eframe::App for MyApp {
                                                 }
                                             });
                                             row.col(|ui| {
-                                                ui.label(u64_to_string(fail.1));
+                                                ui.label(
+                                                    fail.1.format("%y.%m.%d %H:%M:%S").to_string(),
+                                                );
                                             });
                                         });
                                     }
@@ -1160,7 +1172,7 @@ impl eframe::App for MyApp {
                             }
 
                             if r.2.1.is_finite() {
-                                Some([r.0 as f64, r.2 .1 as f64])
+                                Some([r.0.and_utc().timestamp() as f64, r.2 .1 as f64])
                             } else {
                                 None
                             }
@@ -1182,13 +1194,13 @@ impl eframe::App for MyApp {
 
                             if let TLimit::Lim3(_, x, _) = r.3 {
                                 if x.is_finite() {
-                                    Some([r.0 as f64, x as f64])
+                                    Some([r.0.and_utc().timestamp() as f64, x as f64])
                                 } else {
                                     None
                                 }
                             } else if let TLimit::Lim2(x, _) = r.3 {
                                 if x.is_finite() {
-                                    Some([r.0 as f64, x as f64])
+                                    Some([r.0.and_utc().timestamp() as f64, x as f64])
                                 } else {
                                     None
                                 }
@@ -1208,7 +1220,7 @@ impl eframe::App for MyApp {
                             }
 
                             if let TLimit::Lim3(x, _, _) = r.3 {
-                                Some([r.0 as f64, x as f64])
+                                Some([r.0.and_utc().timestamp() as f64, x as f64])
                             } else {
                                 None
                             }
@@ -1225,9 +1237,9 @@ impl eframe::App for MyApp {
                             }
 
                             if let TLimit::Lim3(_, _, x) = r.3 {
-                                Some([r.0 as f64, x as f64])
+                                Some([r.0.and_utc().timestamp() as f64, x as f64])
                             } else if let TLimit::Lim2(_, x) = r.3 {
-                                Some([r.0 as f64, x as f64])
+                                Some([r.0.and_utc().timestamp() as f64, x as f64])
                             } else {
                                 None
                             }
@@ -1325,7 +1337,7 @@ impl eframe::App for MyApp {
 
                                 body.row(14.0 * needed_rows, |mut row| {
                                     row.col(|ui| {
-                                        ui.label(u64_to_timeframe(hour.0));
+                                        ui.label(naivedatetime_to_timeframe(hour.0));
                                     });
                                     row.col(|ui| {
                                         ui.label(format!("{}", used_yield.0));
@@ -1419,7 +1431,7 @@ impl eframe::App for MyApp {
                                         row.col(|ui| {
                                             //ui.label(u64_to_string( sb.0));
                                             ui.label(
-                                                egui::RichText::new(u64_to_string(sb.start))
+                                                egui::RichText::new(sb.start.format("%y.%m.%d. %H:%M:%S").to_string())
                                                     .color(color_sb),
                                             );
                                         });
@@ -1543,17 +1555,11 @@ impl eframe::App for MyApp {
 
 // Formaters for the plot
 
-fn y_formatter(
-    tick: egui_plot::GridMark,
-    _range: &RangeInclusive<f64>,
-) -> String {
+fn y_formatter(tick: egui_plot::GridMark, _range: &RangeInclusive<f64>) -> String {
     format!("{:+1.1E}", tick.value)
 }
 
-fn x_formatter(
-    tick: egui_plot::GridMark,
-    _range: &RangeInclusive<f64>,
-) -> String {
+fn x_formatter(tick: egui_plot::GridMark, _range: &RangeInclusive<f64>) -> String {
     let t: DateTime<Utc> = DateTime::from_timestamp(tick.value as i64, 0).unwrap();
 
     format!("{}\n{}", t.format("%m-%d"), t.format("%R"))
@@ -1577,8 +1583,12 @@ fn draw_result_box(ui: &mut egui::Ui, result: &BResult, gs: bool) -> egui::Respo
         ui.painter()
             .rect_filled(rect, 2.0, result.into_dark_color());
         if gs {
-            ui.painter()
-                .rect_stroke(rect.shrink(1.0), 1.0, Stroke::new(2.0, DARK_GOLD), StrokeKind::Outside);
+            ui.painter().rect_stroke(
+                rect.shrink(1.0),
+                1.0,
+                Stroke::new(2.0, DARK_GOLD),
+                StrokeKind::Outside,
+            );
         }
     }
 

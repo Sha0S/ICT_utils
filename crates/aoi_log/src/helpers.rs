@@ -30,14 +30,14 @@ pub struct ErrorList {
 #[derive(Default, Debug)]
 pub struct InspectionErrList {
     pub name: String,
-    pub failed_boards: Vec<BoardErrList>
+    pub failed_boards: Vec<BoardErrList>,
 }
 
 #[derive(Default, Debug)]
 pub struct BoardErrList {
     pub barcode: String,
     pub date_time: NaiveDateTime,
-    pub failed_positions: Vec<String>
+    pub failed_positions: Vec<String>,
 }
 
 impl ErrorList {
@@ -70,24 +70,25 @@ impl ErrorList {
                 ret.inspection_plans.last_mut().unwrap()
             };
 
-            
             // 2 - gather all uinque failed positions
-            let mut failed_positions =  Vec::new();
+            let mut failed_positions = Vec::new();
 
-            for pos in board.windows.iter().filter(|f| f.result == WindowResult::Fail) {
+            for pos in board
+                .windows
+                .iter()
+                .filter(|f| f.result == WindowResult::Fail)
+            {
                 if !failed_positions.contains(&pos.id) {
                     failed_positions.push(pos.id.clone());
                 }
             }
 
             // 3 - insert new board data
-            inspection_plan.failed_boards.push(
-                BoardErrList { 
-                    barcode: board.barcode.clone(), 
-                    date_time: board.date_time, 
-                    failed_positions                
-                 }
-            );
+            inspection_plan.failed_boards.push(BoardErrList {
+                barcode: board.barcode.clone(),
+                date_time: board.date_time,
+                failed_positions,
+            });
         }
 
         ret
@@ -176,7 +177,8 @@ impl ErrorTrackerT {
             } else {
                 inspection_plan.days.push(DailyErrT {
                     date,
-                    ..Default::default()});
+                    ..Default::default()
+                });
 
                 inspection_plan.days.last_mut().unwrap()
             };
@@ -254,7 +256,8 @@ impl ErrorTrackerT {
             ip.days.sort_by_key(|f| f.date);
 
             for day in &mut ip.days {
-                day.pseudo_errors_per_board = day.total_pseudo_errors as f32 / day.total_boards as f32;
+                day.pseudo_errors_per_board =
+                    day.total_pseudo_errors as f32 / day.total_boards as f32;
                 day.real_errors_per_board = day.total_real_errors as f32 / day.total_boards as f32;
             }
         }
@@ -297,8 +300,10 @@ impl ErrorTrackerT {
             });
 
             for week in &mut ip.weeks {
-                week.pseudo_errors_per_board = week.total_pseudo_errors as f32 / week.total_boards as f32;
-                week.real_errors_per_board = week.total_real_errors as f32 / week.total_boards as f32;
+                week.pseudo_errors_per_board =
+                    week.total_pseudo_errors as f32 / week.total_boards as f32;
+                week.real_errors_per_board =
+                    week.total_real_errors as f32 / week.total_boards as f32;
             }
         }
 

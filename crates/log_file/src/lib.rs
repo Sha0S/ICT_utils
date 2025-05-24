@@ -1,16 +1,18 @@
 #![allow(dead_code)]
 #![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
 
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::io;
 use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 
-use chrono::{Datelike, NaiveDateTime, Timelike};
+use chrono::{Datelike, NaiveDateTime, NaiveTime, Timelike};
 use log::{debug, error, info, trace, warn};
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
+mod dcdc_fct_log;
+mod kaizen_fct_log;
 mod keysight_log;
 mod test;
 
@@ -346,7 +348,7 @@ pub struct FailureList {
     pub test_id: usize,
     pub name: String,
     pub total: usize,
-    pub failed: Vec<(String, u64)>,
+    pub failed: Vec<(String, NaiveDateTime)>,
     pub by_index: Vec<usize>,
 }
 
@@ -386,8 +388,10 @@ impl Test {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LogFileType {
+    Unknown,
     ICT,
-    FCT
+    FCT_Kaizen,
+    FCT_DCDC,
 }
 
 #[derive(Debug)]
@@ -402,8 +406,8 @@ pub struct LogFile {
     status: i32,
     status_str: String,
 
-    time_start: u64,
-    time_end: u64,
+    time_start: NaiveDateTime,
+    time_end: NaiveDateTime,
 
     tests: Vec<Test>,
     report: String,
@@ -414,248 +418,55 @@ pub struct LogFile {
 }
 
 impl LogFile {
-    pub fn load(p: &Path) -> io::Result<Self> {
+    pub fn load(p: &Path) -> anyhow::Result<Self> {
         if p.extension().is_some_and(|f| f == "csv") {
-            LogFile::load_FCT(p)
+            LogFile::load_Kaizen_FCT(p)
+        } else if p.extension().is_some_and(|f| f == "pv") {
+            LogFile::load_DCDC_FCT(p)
         } else {
             LogFile::load_ICT(p)
         }
     }
 
-    pub fn load_panel(p: &Path) -> io::Result<Vec<Self>> {
+    pub fn load_panel(p: &Path) -> anyhow::Result<Vec<Self>> {
         if p.extension().is_some_and(|f| f == "csv") {
-            let ret = LogFile::load_FCT(p);
+            let ret = LogFile::load_Kaizen_FCT(p);
+            ret.map(|f| vec![f])
+        } else if p.extension().is_some_and(|f| f == "pv") {
+            let ret = LogFile::load_DCDC_FCT(p);
             ret.map(|f| vec![f])
         } else {
             LogFile::load_ICT_panel(p)
         }
     }
 
-    pub fn load_FCT(p: &Path) -> io::Result<Self> {
-        info!("Loading FCT file {}", p.display());
+    // For merged logfiles, where all the boards on the panel are in the same log.
+    pub fn load_ICT_panel(p: &Path) -> anyhow::Result<Vec<Self>> {
+        debug!("Loading file: {:?}", p);
+
+        let mut ret = Vec::new();
         let source = p.as_os_str().to_owned();
 
-        let file_ANSI = std::fs::read(p)?;
-        let decoded = encoding_rs::WINDOWS_1252.decode(&file_ANSI);
+        let tree = keysight_log::parse_file(p)?;
 
-        if decoded.2 {
-            error!("Conversion had errors");
-        }
-
-        let lines = decoded.0.lines();
-
-        let mut DMC = None;
-        //let mut DMC_mb = None;
-        //let mut product_id = None;
-        let mut SW_version = String::new();
-        let mut result = None;
-        let mut status = None;
-
-        let mut time_start = None;
-        let mut time_start_u64: u64 = 0;
-        let mut testing_time: u64 = 0;
-
-        let mut mes_enabled = false;
-
-        let mut tests = Vec::new();
-
-        for line in lines {
-            let tokens: Vec<&str> = line.split(';').collect();
-            if tokens.len() < 2 {
-                //println!("ERROR: To few tokens! ({})", line);
-                continue;
-            }
-
-            match tokens[0] {
-                "SerialNumber" => DMC = Some(tokens[1].to_string()),
-                /*"MainSerial" => DMC_mb = Some(tokens[1].to_string()),*/
-                "Part Type" => {
-                    SW_version = tokens[1].to_string();
-                }
-                "MES" => {
-                    if tokens[1] == "1" {
-                        mes_enabled = true;
-                    }
-                }
-                "Start Time" => {
-                    if let Ok(time) =
-                        chrono::NaiveDateTime::parse_from_str(tokens[1], "%Y.%m.%d. %H:%M")
-                    {
-                        time_start = Some(time);
-                        time_start_u64 = time_to_u64(time);
-                    } else {
-                        error!("Time conversion error!");
-                    }
-                }
-                "Testing time(sec)" => {
-                    if let Ok(dt) = tokens[1].parse() {
-                        testing_time = dt;
-                        tests.push(Test {
-                            name: "Testing time".to_string(),
-                            ttype: TType::Time,
-                            result: (BResult::Pass, dt as f32),
-                            limits: TLimit::None,
-                        });
-                    }
-                }
-                "Result" => result = Some(tokens[1].to_string()),
-                "Error Code" => {
-                    if let Ok(s) = tokens[1].parse() {
-                        status = Some(s);
-                    }
-                }
-                _ => {
-                    if tokens.len() != 6 {
-                        debug!("Tokens: {tokens:?}");
-                        continue;
-                    }
-                    if tokens[0] == "StepName" || tokens[5] == "Info" {
-                        continue;
-                    }
-
-                    if let Ok(mut meas) = tokens[2].parse::<f32>() {
-                        if tokens[4] == "mA" {
-                            meas /= 1000.0;
-                        }
-                        if tokens[4] == "kHZ" || tokens[4] == "kHz" {
-                            meas *= 1000.0;
-                        }
-
-                        let limits = if let Ok(mut min) = tokens[1].parse::<f32>() {
-                            if let Ok(mut max) = tokens[3].parse::<f32>() {
-                                if tokens[4] == "mA" {
-                                    min /= 1000.0;
-                                    max /= 1000.0;
-                                }
-                                if tokens[4] == "kHZ" || tokens[4] == "kHz" {
-                                    min *= 1000.0;
-                                    max *= 1000.0;
-                                }
-
-                                TLimit::Lim2(max, min)
-                            } else {
-                                TLimit::None
-                            }
-                        } else {
-                            TLimit::None
-                        };
-
-                        let result = (
-                            if tokens[5] == "Passed" {
-                                BResult::Pass
-                            } else {
-                                BResult::Fail
-                            },
-                            meas,
-                        );
-
-                        tests.push(Test {
-                            name: tokens[0].to_string(),
-                            ttype: TType::from(tokens[4]),
-                            result,
-                            limits,
-                        });
-                    }
-                }
-            }
-        }
-
-        if tests.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Logfile conatined no tests!",
-            ));
-        }
-
-        let time_end: u64 = if let Some(start) = time_start {
-            if testing_time > 0 {
-                let end_time = start + std::time::Duration::from_secs(testing_time);
-                time_to_u64(end_time)
-            } else {
-                time_start_u64
-            }
-        } else {
-            0
-        };
-
-        // Generate report text for failed boards
-        let result = result.is_some_and(|f| f == "Passed");
-        let mut report = String::new();
-        if !result {
-            let mut lines = Vec::new();
-            for test in &tests {
-                if test.result.0 != BResult::Pass {
-                    lines.push(format!("{} HAS FAILED", test.name));
-                    lines.push(format!("Measured: {:+1.4E}", test.result.1));
-                    
-                    if let TLimit::Lim2(ul, ll) = test.limits {
-                        lines.push(format!("High Limit: {:+1.4E}", ul));
-                        lines.push(format!("Low Limit: {:+1.4E}", ll));
-                    }
-
-                    if test.ttype != TType::Unknown {
-                        lines.push(format!("{} test with unit {}", test.ttype.print(), test.ttype.unit()));
-                    }
-                    
-                    lines.push("\n----------------------------------------\n".to_string());
-                }
-            }
-
-            report = lines.join("\n");
-        }
-        
-
-        let result = LogFile {
-            source,
-            DMC: DMC.clone().unwrap_or_default(),
-            DMC_mb: DMC.unwrap_or_default(), //DMC_mb.unwrap_or_default(),
-            product_id: "Kaized CMD".to_string(), //product_id.unwrap_or_default(),
-            index: 1,
-            result,
-            status: status.unwrap_or_default(),
-            status_str: String::new(),
-            time_start: time_start_u64,
-            time_end,
-            tests,
-            report,
-            SW_version,
-            log_type: LogFileType::FCT,
-            mes_enabled
-        };
-
-        //println!("Result: {result:?}");
-
-        Ok(result)
-    }
-
-    // For merged logfiles, where all the boards on the panel are in the same log.
-    pub fn load_ICT_panel(p: &Path) -> io::Result<Vec<Self>> {
-       debug!("Loading file: {:?}", p);
-
-       let mut ret = Vec::new();
-       let source = p.as_os_str().to_owned();
-
-       let tree = keysight_log::parse_file(p)?;
-
-       for batch_node in &tree {
+        for batch_node in &tree {
             if let Some(board) = LogFile::load_ICT_board(batch_node, &source) {
                 ret.push(board);
             }
-       }
+        }
 
-       Ok(ret)
+        Ok(ret)
     }
 
     // We assume that the logfile is not missing any on the BATCH/BTEST fields
     fn load_ICT_board(batch_node: &keysight_log::TreeNode, source: &OsString) -> Option<Self> {
-
         let product_id;
         let DMC;
         let DMC_mb;
-        let  index;
-        let  time_start: u64;
-        let  time_end: u64;
-        let  status;
+        let index;
+        let time_start;
+        let time_end;
+        let status;
 
         let mut tests: Vec<Test> = Vec::new();
         let mut report: Vec<String> = Vec::new();
@@ -677,22 +488,8 @@ impl LogFile {
 
         // {@BATCH|UUT type|UUT type rev|fixture id|testhead number|testhead type|process step|batch id|
         //  operator id|controller|testplan id|testplan rev|parent panel type|parent panel type rev (| version label)}
-        if let keysight_log::KeysightPrefix::Batch(
-            p_id,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = &batch_node.data
+        if let keysight_log::KeysightPrefix::Batch(p_id, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+            &batch_node.data
         {
             product_id = p_id.clone();
         } else {
@@ -734,8 +531,8 @@ impl LogFile {
             }
 
             status = *b_status;
-            time_start = *t_start;
-            time_end = *t_end;
+            time_start = u64_to_time(*t_start);
+            time_end = u64_to_time(*t_end);
             index = *b_index as usize;
         } else {
             error!("Node is not a Btest node!");
@@ -756,10 +553,7 @@ impl LogFile {
                                     TLimit::Lim3(nom, max, min)
                                 }
                                 _ => {
-                                    error!(
-                                        "Analog test limit parsing error! {:?}",
-                                        lim.data
-                                    );
+                                    error!("Analog test limit parsing error! {:?}", lim.data);
                                     TLimit::None
                                 }
                             },
@@ -831,10 +625,7 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -860,10 +651,7 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -894,10 +682,7 @@ impl LogFile {
                                             failed_nodes.append(&mut tmp);
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -919,10 +704,7 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -951,10 +733,7 @@ impl LogFile {
                                 error!("KeysightPrefix::Error found! {:?}", s);
                             }
                             _ => {
-                                warn!(
-                                    "Found a invalid field nested in BLOCK! {:?}",
-                                    sub_test.data
-                                );
+                                warn!("Found a invalid field nested in BLOCK! {:?}", sub_test.data);
                             }
                         }
                     }
@@ -1192,10 +971,7 @@ impl LogFile {
                     error!("KeysightPrefix::Error found! {:?}", s);
                 }
                 _ => {
-                    warn!(
-                        "Found a invalid field nested in BTEST! {:?}",
-                        test.data
-                    );
+                    warn!("Found a invalid field nested in BTEST! {:?}", test.data);
                 }
             }
         }
@@ -1234,7 +1010,7 @@ impl LogFile {
         })
     }
 
-    pub fn load_ICT(p: &Path) -> io::Result<Self> {
+    pub fn load_ICT(p: &Path) -> anyhow::Result<Self> {
         info!("INFO: Loading (v2) file {}", p.display());
         let source = p.as_os_str().to_owned();
 
@@ -1244,8 +1020,8 @@ impl LogFile {
         let mut DMC = String::from("NoDMC");
         let mut DMC_mb = String::from("NoMB");
         let mut index = 1;
-        let mut time_start: u64 = 0;
-        let mut time_end: u64 = 0;
+        let mut time_start = None;
+        let mut time_end = None;
         let mut status = 0;
 
         let mut tests: Vec<Test> = Vec::new();
@@ -1333,8 +1109,8 @@ impl LogFile {
                 }
 
                 status = *b_status;
-                time_start = *t_start;
-                time_end = *t_end;
+                time_start = Some(u64_to_time(*t_start));
+                time_end = Some(u64_to_time(*t_end));
                 index = *b_index as usize;
                 btest_node = Some(btest);
             } else {
@@ -1362,10 +1138,7 @@ impl LogFile {
                                     TLimit::Lim3(nom, max, min)
                                 }
                                 _ => {
-                                    error!(
-                                        "Analog test limit parsing error! {:?}",
-                                        lim.data
-                                    );
+                                    error!("Analog test limit parsing error! {:?}", lim.data);
                                     TLimit::None
                                 }
                             },
@@ -1437,10 +1210,7 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -1466,10 +1236,7 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -1500,10 +1267,7 @@ impl LogFile {
                                             failed_nodes.append(&mut tmp);
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -1525,10 +1289,7 @@ impl LogFile {
                                             report.push(rpt.clone());
                                         }
                                         _ => {
-                                            debug!(
-                                                "Unhandled subfield! {:?}",
-                                                subfield.data
-                                            )
+                                            debug!("Unhandled subfield! {:?}", subfield.data)
                                         }
                                     }
                                 }
@@ -1798,10 +1559,7 @@ impl LogFile {
                     error!("KeysightPrefix::Error found! {:?}", s);
                 }
                 _ => {
-                    error!(
-                        "Found a invalid field nested in BTEST! {:?}",
-                        test.data
-                    );
+                    error!("Found a invalid field nested in BTEST! {:?}", test.data);
                 }
             }
         }
@@ -1821,13 +1579,12 @@ impl LogFile {
             });
         }
 
-        if time_start == 0 {
-            if let Ok(x) = p.metadata() {
-                time_start = local_time_to_u64(x.modified().unwrap().into());
-            }
+        if time_start.is_none() {
+            //if let Ok(_x) = p.metadata() {
+            time_start = Some(chrono::Local::now().naive_local());
         }
 
-        if time_end == 0 {
+        if time_end.is_none() {
             time_end = time_start;
         }
 
@@ -1840,8 +1597,8 @@ impl LogFile {
             result: status == 0,
             status,
             status_str: keysight_log::status_to_str(status),
-            time_start,
-            time_end,
+            time_start: time_start.unwrap(),
+            time_end: time_end.unwrap(),
             tests,
             report: report.join("\n"),
             SW_version,
@@ -1882,11 +1639,11 @@ impl LogFile {
         &self.DMC_mb
     }
 
-    pub fn get_time_start(&self) -> u64 {
+    pub fn get_time_start(&self) -> NaiveDateTime {
         self.time_start
     }
 
-    pub fn get_time_end(&self) -> u64 {
+    pub fn get_time_end(&self) -> NaiveDateTime {
         self.time_end
     }
 
@@ -1908,7 +1665,7 @@ impl LogFile {
 
     // Can't actually check with ICT logs, but could implement something later
     pub fn get_mes_enabled(&self) -> bool {
-        if self.log_type != LogFileType::FCT {
+        if self.log_type != LogFileType::FCT_Kaizen {
             error!("Checking for MES usage only works in FCT logs! It defaults to 'false'!");
         }
 
@@ -1932,8 +1689,8 @@ impl LogFile {
 
 struct Log {
     source: OsString,
-    time_s: u64,
-    time_e: u64,
+    time_s: NaiveDateTime,
+    time_e: NaiveDateTime,
     result: BResult, // Could use a bool too, as it can't be Unknown
 
     results: Vec<TResult>,
@@ -2023,9 +1780,15 @@ impl Board {
 
         for (i, log) in self.logs.iter().enumerate() {
             if log.result == BResult::Pass {
-                ret.push(format!("Log #{i} - {}: Pass\n", u64_to_string(log.time_e)));
+                ret.push(format!(
+                    "Log #{i} - {}: Pass\n",
+                    log.time_e.format("%Y-%m-%d %H:%M:%S")
+                ));
             } else {
-                ret.push(format!("Log #{i} - {}: Fail\n", u64_to_string(log.time_e)));
+                ret.push(format!(
+                    "Log #{i} - {}: Fail\n",
+                    log.time_e.format("%Y-%m-%d %H:%M:%S")
+                ));
 
                 if log.report.is_empty() {
                     ret.push(String::from("No report field found in log!\n"));
@@ -2083,7 +1846,7 @@ impl Board {
 
             // Log result and time of test
             let _ = sheet.write(2, c, l.result.print());
-            let _ = sheet.write_with_format(2, c + 1, u64_to_string(l.time_s), &format_with_wrap);
+            let _ = sheet.write_with_format(2, c + 1, &l.time_s, &format_with_wrap);
 
             let _ = sheet.set_column_width(c, 8);
             let _ = sheet.set_column_width(c + 1, 14);
@@ -2144,7 +1907,7 @@ impl Board {
 
             // Log result and time of test
             let _ = sheet.write(l, 2, log.result.print());
-            let _ = sheet.write(l, 1, u64_to_string(log.time_s));
+            let _ = sheet.write(l, 1, &log.time_s);
 
             // Print measurement results
             for (i, t) in export_list.iter().enumerate() {
@@ -2165,8 +1928,8 @@ impl Board {
 
 #[derive(Clone, Debug)]
 pub struct MbResult {
-    pub start: u64,
-    pub end: u64,
+    pub start: NaiveDateTime,
+    pub end: NaiveDateTime,
     pub result: BResult,
     pub panels: Vec<BResult>,
 }
@@ -2174,6 +1937,7 @@ struct MultiBoard {
     DMC: String,
     golden_sample: bool,
     boards: Vec<Board>,
+    log_type: LogFileType,
 
     // ( Start time, Multiboard test result, <Result of the individual boards>)
     results: Vec<MbResult>,
@@ -2186,6 +1950,7 @@ impl MultiBoard {
             golden_sample: false,
             boards: Vec::new(),
             results: Vec::new(),
+            log_type: LogFileType::Unknown,
             //first_res: BResult::Unknown,
             //final_res: BResult::Unknown
         }
@@ -2195,6 +1960,10 @@ impl MultiBoard {
     fn push(&mut self, log: LogFile) -> bool {
         if self.DMC.is_empty() {
             self.DMC = log.DMC_mb.to_owned();
+        }
+
+        if self.log_type == LogFileType::Unknown {
+            self.log_type = log.log_type;
         }
 
         while self.boards.len() < log.index {
@@ -2316,8 +2085,8 @@ impl MultiBoard {
         &self.results
     }
 
-    fn get_failures(&self, setting: FlSettings) -> Vec<(usize, usize, String, u64)> {
-        let mut failures: Vec<(usize, usize, String, u64)> = Vec::new(); // (test number, board index, DMC, time)
+    fn get_failures(&self, setting: FlSettings) -> Vec<(usize, usize, String, NaiveDateTime)> {
+        let mut failures: Vec<(usize, usize, String, NaiveDateTime)> = Vec::new(); // (test number, board index, DMC, time)
 
         for b in &self.boards {
             if b.logs.is_empty() {
@@ -2346,15 +2115,14 @@ impl MultiBoard {
     }
 
     // Get the measurments for test "testid". Vec<(time, index, result, limits)>
-    fn get_stats_for_test(&self, testid: usize) -> Vec<(u64, usize, TResult, TLimit)> {
-        let mut resultlist: Vec<(u64, usize, TResult, TLimit)> = Vec::new();
+    fn get_stats_for_test(&self, testid: usize) -> Vec<(NaiveDateTime, usize, TResult, TLimit)> {
+        let mut resultlist: Vec<(NaiveDateTime, usize, TResult, TLimit)> = Vec::new();
 
         for sb in &self.boards {
             let index = sb.index;
             for l in &sb.logs {
-                let time = l.time_s;
                 if let Some(result) = l.results.get(testid) {
-                    resultlist.push((time, index, *result, l.limits[testid]))
+                    resultlist.push((l.time_s, index, *result, l.limits[testid]))
                 }
             }
         }
@@ -2392,7 +2160,11 @@ pub struct HourlyYield {
     pub boards_with_gs: Yield,
 }
 
-pub type HourlyStats = (u64, HourlyYield, Vec<(BResult, u64, String, bool)>); // (time, [(OK, NOK), (OK, NOK with gs)], Vec<Results>)
+pub type HourlyStats = (
+    NaiveDateTime,
+    HourlyYield,
+    Vec<(BResult, NaiveTime, String, bool)>,
+); // (time, [(OK, NOK), (OK, NOK with gs)], Vec<Results>)
 pub type MbStats = (String, Vec<MbResult>, bool); // (DMC, Vec<(time, Multiboard result, Vec<Board results>)>, golden_sample)
 
 #[derive(Debug, Default)]
@@ -2403,7 +2175,7 @@ pub struct TestStats {
 
     pub avg: f64,
     pub std_dev: f64,
-    pub cpk: f32
+    pub cpk: f32,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -2479,7 +2251,6 @@ impl LogFileHandler {
             all_ok
         } else {
             error!("Failed to load panel from log: {:?}", p);
-            
 
             // Try using the old implementation
             if let Ok(log) = LogFile::load(p) {
@@ -2488,7 +2259,6 @@ impl LogFileHandler {
             } else {
                 error!("Load failed using the older implementation too.");
             }
-
 
             false
         }
@@ -2540,10 +2310,7 @@ impl LogFileHandler {
             // If the testlist is missing any entries, add them
             for test in &log.tests {
                 if !self.testlist.iter().any(|e| e.0 == test.name) {
-                    debug!(
-                        "Test {} was missing from testlist. Adding.",
-                        test.name
-                    );
+                    debug!("Test {} was missing from testlist. Adding.", test.name);
                     self.testlist.push((test.name.clone(), test.ttype));
                 }
             }
@@ -2571,7 +2338,8 @@ impl LogFileHandler {
                         q += 1;
                         trace!(
                             "Test mismatch: {} =/= {}",
-                            self.testlist[i].0, log.tests[i].name
+                            self.testlist[i].0,
+                            log.tests[i].name
                         );
                     }
                     buffer_i.push(i);
@@ -2632,7 +2400,6 @@ impl LogFileHandler {
 
         for b in self.multiboards.iter_mut() {
             let mb_yield = b.update();
-
 
             if self.pp_multiboard < b.boards.len() {
                 self.pp_multiboard = b.boards.len();
@@ -2720,7 +2487,7 @@ impl LogFileHandler {
     }
 
     // (DMC, time, result, failed test list)
-    pub fn get_failed_boards(&self) -> Vec<(String, u64, BResult, Vec<String>)> {
+    pub fn get_failed_boards(&self) -> Vec<(String, NaiveDateTime, BResult, Vec<String>)> {
         let mut ret = Vec::new();
 
         for mb in &self.multiboards {
@@ -2743,7 +2510,11 @@ impl LogFileHandler {
         ret
     }
 
-    pub fn get_failures(&self, setting: FlSettings, include_golden_samples: bool) -> Vec<FailureList> {
+    pub fn get_failures(
+        &self,
+        setting: FlSettings,
+        include_golden_samples: bool,
+    ) -> Vec<FailureList> {
         let mut failure_list: Vec<FailureList> = Vec::new();
 
         for mb in &self.multiboards {
@@ -2787,15 +2558,22 @@ impl LogFileHandler {
 
     pub fn get_hourly_mb_stats(&self) -> Vec<HourlyStats> {
         // Vec<(time in yymmddhh, total ok, total nok, Vec<(result, mmss)> )>
-        // Time is in format 231222154801 by default YYMMDDHHMMSS
-        // We don't care about the last 4 digit, so we can div by 10^4
 
         let mut ret: Vec<HourlyStats> = Vec::new();
 
         for mb in &self.multiboards {
             'resfor: for res in &mb.results {
-                let time = res.end / u64::pow(10, 4);
-                let time_2 = res.end % u64::pow(10, 4);
+                // set min, sec, msec to 0
+                let time = res
+                    .end
+                    .clone()
+                    .with_minute(0)
+                    .unwrap()
+                    .with_second(0)
+                    .unwrap()
+                    .with_nanosecond(0)
+                    .unwrap();
+                let time_2 = res.end.time();
 
                 //println!("{} - {} - {}", res.0, time, time_2);
 
@@ -2886,30 +2664,30 @@ impl LogFileHandler {
 
         let mut sum: f64 = 0.0;
         let mut count: u32 = 0;
-        let mut limits: Option<(f32,f32)> = None;
+        let mut limits: Option<(f32, f32)> = None;
 
         for mb in &self.multiboards {
             for sb in &mb.boards {
                 for log in &sb.logs {
                     if let Some(limit) = log.limits.get(testid) {
                         match limit {
-                            TLimit::None => {},
+                            TLimit::None => {}
                             TLimit::Lim2(ul, ll) => {
                                 if let Some((min, max)) = limits.as_mut() {
                                     *min = min.max(*ll);
                                     *max = max.min(*ul);
                                 } else {
-                                    limits = Some((*ll,*ul));
+                                    limits = Some((*ll, *ul));
                                 }
-                            },
+                            }
                             TLimit::Lim3(_, ul, ll) => {
                                 if let Some((min, max)) = limits.as_mut() {
                                     *min = min.max(*ll);
                                     *max = max.min(*ul);
                                 } else {
-                                    limits = Some((*ll,*ul));
+                                    limits = Some((*ll, *ul));
                                 }
-                            },
+                            }
                         }
                     }
                     if let Some(result) = log.results.get(testid) {
@@ -2935,7 +2713,6 @@ impl LogFileHandler {
         }
 
         if count > 1 {
-
             ret.avg = sum / count as f64;
 
             // Std Dev:
@@ -2952,11 +2729,11 @@ impl LogFileHandler {
                 }
             }
 
-            ret.std_dev = (diff_sqrd / (count-1) as f64).sqrt();
+            ret.std_dev = (diff_sqrd / (count - 1) as f64).sqrt();
 
             if let Some((min, max)) = limits {
-                let cpk_1 = (ret.avg - min as f64) / (3.0*ret.std_dev);
-                let cpk_2 = (max as f64 - ret.avg) / (3.0*ret.std_dev);
+                let cpk_1 = (ret.avg - min as f64) / (3.0 * ret.std_dev);
+                let cpk_2 = (max as f64 - ret.avg) / (3.0 * ret.std_dev);
                 ret.cpk = cpk_1.min(cpk_2) as f32;
             }
         }
@@ -2966,8 +2743,11 @@ impl LogFileHandler {
 
     // Get the measurments for test "testid". (TType,Vec<(time, index, result, limits)>) The Vec is sorted by time.
     // Could pass the DMC too
-    pub fn get_stats_for_test(&self, testid: usize) -> (TType, Vec<(u64, usize, TResult, TLimit)>) {
-        let mut resultlist: Vec<(u64, usize, TResult, TLimit)> = Vec::new();
+    pub fn get_stats_for_test(
+        &self,
+        testid: usize,
+    ) -> (TType, Vec<(NaiveDateTime, usize, TResult, TLimit)>) {
+        let mut resultlist: Vec<(NaiveDateTime, usize, TResult, TLimit)> = Vec::new();
 
         if testid > self.testlist.len() {
             error!(
@@ -2983,13 +2763,6 @@ impl LogFileHandler {
         }
 
         resultlist.sort_by_key(|k| k.0);
-
-        for res in resultlist.iter_mut() {
-            res.0 = NaiveDateTime::parse_from_str(&format!("{}", res.0), "%y%m%d%H%M%S")
-                .unwrap()
-                .and_utc()
-                .timestamp() as u64;
-        }
 
         (self.testlist[testid].1, resultlist)
     }
@@ -3020,9 +2793,7 @@ impl LogFileHandler {
                                     if limit.is_none() {
                                         limit = Some(test)
                                     } else if *limit.unwrap() != *test {
-                                        debug!(
-                                            "Test {tname} has limit changes in the sample"
-                                        );
+                                        debug!("Test {tname} has limit changes in the sample");
                                         ret.push((i, tname.clone()));
                                         continue 'outerloop;
                                     }
@@ -3072,8 +2843,13 @@ impl LogFileHandler {
     pub fn export(&self, path: PathBuf, settings: &ExportSettings) {
         let mut book = rust_xlsxwriter::Workbook::new();
         let sheet = book.add_worksheet();
-        let sci_format = rust_xlsxwriter::Format::new().set_align(rust_xlsxwriter::FormatAlign::Center).set_num_format("0.00E+00");
-        let center_format = rust_xlsxwriter::Format::new().set_align(rust_xlsxwriter::FormatAlign::Center).set_num_format("0.00").set_text_wrap();
+        let sci_format = rust_xlsxwriter::Format::new()
+            .set_align(rust_xlsxwriter::FormatAlign::Center)
+            .set_num_format("0.00E+00");
+        let center_format = rust_xlsxwriter::Format::new()
+            .set_align(rust_xlsxwriter::FormatAlign::Center)
+            .set_num_format("0.00")
+            .set_text_wrap();
 
         if settings.vertical {
             // Create header
@@ -3082,7 +2858,7 @@ impl LogFileHandler {
             let _ = sheet.set_column_width(0, 32);
             let _ = sheet.write(6, 1, "Test time");
             let _ = sheet.set_column_width(1, 18);
-            
+
             let _ = sheet.write(0, 2, "Test name:");
             let _ = sheet.write(1, 2, "Test type:");
             let _ = sheet.write(2, 2, "Lower limit:");
@@ -3102,28 +2878,28 @@ impl LogFileHandler {
                 let c: u16 = (i * 2 + 3).try_into().unwrap();
 
                 // Testname and type
-                let _ = sheet.merge_range(0, c, 0, c+1, &self.testlist[*t].0, &center_format);
-                let _ = sheet.merge_range(1, c, 1, c+1, &self.testlist[*t].1.print(), &center_format);
-                
+                let _ = sheet.merge_range(0, c, 0, c + 1, &self.testlist[*t].0, &center_format);
+                let _ =
+                    sheet.merge_range(1, c, 1, c + 1, &self.testlist[*t].1.print(), &center_format);
+
                 // Merge for the next 4 rows.
                 for row in 2..6 {
-                    let _ = sheet.merge_range(row, c, row, c+1, "", &center_format);
+                    let _ = sheet.merge_range(row, c, row, c + 1, "", &center_format);
                 }
 
                 // Limits, StdDev, Cpk
-                if let TLimit::Lim2(ul,ll) = stats.limits {
+                if let TLimit::Lim2(ul, ll) = stats.limits {
                     let _ = sheet.write_number_with_format(2, c, ll, &sci_format);
 
                     // UL can be +INF
                     if ul.is_finite() {
                         let _ = sheet.write_number_with_format(3, c, ul, &sci_format);
                     }
-                    
+
                     let _ = sheet.write_number_with_format(4, c, stats.std_dev, &sci_format);
                     let _ = sheet.write_number_with_format(5, c, stats.cpk, &center_format);
                 }
 
-                
                 let _ = sheet.write_with_format(6, c, "Result", &center_format);
                 let _ = sheet.write_with_format(6, c + 1, "Value", &center_format);
 
@@ -3178,14 +2954,14 @@ impl LogFileHandler {
                 let _ = sheet.write(l, 1, self.testlist[*t].1.print());
 
                 // Limits, StdDev, Cpk
-                if let TLimit::Lim2(ul,ll) = stats.limits {
+                if let TLimit::Lim2(ul, ll) = stats.limits {
                     let _ = sheet.write_number_with_format(l, 2, ll, &sci_format);
 
                     // UL can be +INF
                     if ul.is_finite() {
                         let _ = sheet.write_number_with_format(l, 3, ul, &sci_format);
                     }
-                    
+
                     let _ = sheet.write_number_with_format(l, 4, stats.avg, &sci_format);
                     let _ = sheet.write_number_with_format(l, 5, stats.std_dev, &sci_format);
                     let _ = sheet.write_number_with_format(l, 6, stats.cpk, &center_format);

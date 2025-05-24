@@ -81,11 +81,17 @@ impl LogInfoWindow {
                     ui.horizontal(|ui| {
                         ui.monospace("DMC:");
 
-                        let mut text_edit = egui::TextEdit::singleline(&mut self.search_bar).desired_width(250.0).show(ui);
+                        let mut text_edit = egui::TextEdit::singleline(&mut self.search_bar)
+                            .desired_width(250.0)
+                            .show(ui);
 
-                        if text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {     
-                            let new_range = 
-                            egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(self.search_bar.len()));
+                        if text_edit.response.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        {
+                            let new_range = egui::text::CCursorRange::two(
+                                egui::text::CCursor::new(0),
+                                egui::text::CCursor::new(self.search_bar.len()),
+                            );
                             text_edit.response.request_focus();
                             text_edit.state.cursor.set_char_range(Some(new_range));
                             text_edit.state.store(ui.ctx(), text_edit.response.id);
@@ -93,7 +99,7 @@ impl LogInfoWindow {
                             self.report.clear();
 
                             if let Some(report) =
-                            lfh.read().unwrap().get_report_for_SB(&self.search_bar)
+                                lfh.read().unwrap().get_report_for_SB(&self.search_bar)
                             {
                                 self.DMC = self.search_bar.clone();
                                 self.report = report;

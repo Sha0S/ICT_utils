@@ -110,8 +110,8 @@ impl eframe::App for IctLogReader {
                 ui.monospace("Teszt ideje:");
                 ui.monospace(format!(
                     "{} - {}",
-                    u64_to_string(self.log.get_time_start()),
-                    u64_to_string(self.log.get_time_end())
+                    self.log.get_time_start().format("%Y-%m-%d %H:%M:%S"),
+                    self.log.get_time_end().format("%Y-%m-%d %H:%M:%S")
                 ));
                 ui.end_row();
 
