@@ -67,6 +67,7 @@ impl LogFile {
                         tests.push(Test {
                             name: "Testing time".to_string(),
                             ttype: TType::Time,
+                            msg: String::new(),
                             result: (BResult::Pass, dt as f32),
                             limits: TLimit::None,
                         });
@@ -126,6 +127,7 @@ impl LogFile {
                         tests.push(Test {
                             name: tokens[0].to_string(),
                             ttype: TType::from(tokens[4]),
+                            msg: String::new(),
                             result,
                             limits,
                         });
@@ -181,6 +183,7 @@ impl LogFile {
             DMC_mb: DMC.unwrap_or_default(), //DMC_mb.unwrap_or_default(),
             product_id: "Kaized CMD".to_string(), //product_id.unwrap_or_default(),
             index: 1,
+            nest: None,
             result,
             status: status.unwrap_or_default(),
             status_str: String::new(),

@@ -176,6 +176,7 @@ pub enum TType {
     Temperature,
     Precentage,
     Degrees,
+    String,
     Unknown,
 }
 
@@ -246,6 +247,7 @@ impl TType {
             TType::Temperature => "Temperature".to_string(),
             TType::Precentage => "Precentage".to_string(),
             TType::Degrees => "Degrees".to_string(),
+            TType::String => "String".to_string(),
         }
     }
 
@@ -269,6 +271,7 @@ impl TType {
             TType::Temperature => "°C".to_string(),
             TType::Precentage => "%".to_string(),
             TType::Degrees => "°".to_string(),
+            TType::String => "String".to_string(),
         }
     }
 }
@@ -356,6 +359,7 @@ pub struct FailureList {
 pub struct Test {
     name: String,
     ttype: TType,
+    msg: String,
 
     result: TResult,
     limits: TLimit,
@@ -401,6 +405,7 @@ pub struct LogFile {
     DMC_mb: String,
     product_id: String,
     index: usize,
+    nest: Option<usize>,
 
     result: bool,
     status: i32,
@@ -477,6 +482,7 @@ impl LogFile {
         tests.push(Test {
             name: "pins".to_owned(),
             ttype: TType::Pin,
+            msg: String::new(),
             result: (BResult::Unknown, 0.0),
             limits: TLimit::None,
         });
@@ -574,6 +580,7 @@ impl LogFile {
                         tests.push(Test {
                             name: strip_index(name).to_string(),
                             ttype: TType::from(*analog),
+                            msg: String::new(),
                             result: (BResult::from(*status), *result),
                             limits,
                         })
@@ -638,6 +645,7 @@ impl LogFile {
                                 tests.push(Test {
                                     name,
                                     ttype: TType::from(*analog),
+                                    msg: String::new(),
                                     result: (BResult::from(*status), *result),
                                     limits,
                                 })
@@ -665,6 +673,7 @@ impl LogFile {
                                     tests.push(Test {
                                         name: strip_index(sub_name).to_string(),
                                         ttype: TType::Digital,
+                                        msg: String::new(),
                                         result: (BResult::from(*status), *status as f32),
                                         limits: TLimit::None,
                                     });
@@ -691,6 +700,7 @@ impl LogFile {
                                 tests.push(Test {
                                     name,
                                     ttype: TType::Testjet,
+                                    msg: String::new(),
                                     result: (BResult::from(*status), *status as f32),
                                     limits: TLimit::None,
                                 })
@@ -718,6 +728,7 @@ impl LogFile {
                                     tests.push(Test {
                                         name: strip_index(sub_name).to_string(),
                                         ttype: TType::BoundaryS,
+                                        msg: String::new(),
                                         result: (BResult::from(*status), *status as f32),
                                         limits: TLimit::None,
                                     })
@@ -757,6 +768,7 @@ impl LogFile {
                     tests.push(Test {
                         name: strip_index(test_name).to_string(),
                         ttype: TType::BoundaryS,
+                        msg: String::new(),
                         result: (BResult::from(*status), *status as f32),
                         limits: TLimit::None,
                     })
@@ -783,6 +795,7 @@ impl LogFile {
                     tests.push(Test {
                         name: strip_index(test_name).to_string(),
                         ttype: TType::Digital,
+                        msg: String::new(),
                         result: (BResult::from(*status), *status as f32),
                         limits: TLimit::None,
                     })
@@ -826,6 +839,7 @@ impl LogFile {
                     tests.push(Test {
                         name: strip_index(test_name).to_string(),
                         ttype: TType::Testjet,
+                        msg: String::new(),
                         result: (BResult::from(*status), *status as f32),
                         limits: TLimit::None,
                     })
@@ -884,6 +898,7 @@ impl LogFile {
                     tests.push(Test {
                         name: String::from("shorts"),
                         ttype: TType::Shorts,
+                        msg: String::new(),
                         result: (BResult::from(status), status as f32),
                         limits: TLimit::None,
                     })
@@ -900,6 +915,7 @@ impl LogFile {
                                 tests.push(Test {
                                     name: String::from("Programming_time"),
                                     ttype: TType::Unknown,
+                                    msg: String::new(),
                                     result: (BResult::Pass, ts as f32 / 1000.0),
                                     limits: TLimit::None,
                                 })
@@ -948,12 +964,14 @@ impl LogFile {
                         tests.push(Test {
                             name: format!("PS_Info_{PS_counter}%Voltage"),
                             ttype: TType::Measurement,
+                            msg: String::new(),
                             result: (BResult::Pass, voltage),
                             limits: TLimit::None,
                         });
                         tests.push(Test {
                             name: format!("PS_Info_{PS_counter}%Current"),
                             ttype: TType::Current,
+                            msg: String::new(),
                             result: (BResult::Pass, current),
                             limits: TLimit::None,
                         });
@@ -986,6 +1004,7 @@ impl LogFile {
                     keysight_log::status_to_str(status)
                 ),
                 ttype: TType::Unknown,
+                msg: String::new(),
                 result: (BResult::Fail, 0.0),
                 limits: TLimit::None,
             });
@@ -997,6 +1016,7 @@ impl LogFile {
             DMC_mb,
             product_id,
             index,
+            nest: None,
             result: status == 0,
             status,
             status_str: keysight_log::status_to_str(status),
@@ -1033,6 +1053,7 @@ impl LogFile {
         tests.push(Test {
             name: "pins".to_owned(),
             ttype: TType::Pin,
+            msg: String::new(),
             result: (BResult::Unknown, 0.0),
             limits: TLimit::None,
         });
@@ -1159,6 +1180,7 @@ impl LogFile {
                         tests.push(Test {
                             name: strip_index(name).to_string(),
                             ttype: TType::from(*analog),
+                            msg: String::new(),
                             result: (BResult::from(*status), *result),
                             limits,
                         })
@@ -1223,6 +1245,7 @@ impl LogFile {
                                 tests.push(Test {
                                     name,
                                     ttype: TType::from(*analog),
+                                    msg: String::new(),
                                     result: (BResult::from(*status), *result),
                                     limits,
                                 })
@@ -1250,6 +1273,7 @@ impl LogFile {
                                     tests.push(Test {
                                         name: strip_index(sub_name).to_string(),
                                         ttype: TType::Digital,
+                                        msg: String::new(),
                                         result: (BResult::from(*status), *status as f32),
                                         limits: TLimit::None,
                                     });
@@ -1276,6 +1300,7 @@ impl LogFile {
                                 tests.push(Test {
                                     name,
                                     ttype: TType::Testjet,
+                                    msg: String::new(),
                                     result: (BResult::from(*status), *status as f32),
                                     limits: TLimit::None,
                                 })
@@ -1303,6 +1328,7 @@ impl LogFile {
                                     tests.push(Test {
                                         name: strip_index(sub_name).to_string(),
                                         ttype: TType::BoundaryS,
+                                        msg: String::new(),
                                         result: (BResult::from(*status), *status as f32),
                                         limits: TLimit::None,
                                     })
@@ -1345,6 +1371,7 @@ impl LogFile {
                     tests.push(Test {
                         name: strip_index(test_name).to_string(),
                         ttype: TType::BoundaryS,
+                        msg: String::new(),
                         result: (BResult::from(*status), *status as f32),
                         limits: TLimit::None,
                     })
@@ -1371,6 +1398,7 @@ impl LogFile {
                     tests.push(Test {
                         name: strip_index(test_name).to_string(),
                         ttype: TType::Digital,
+                        msg: String::new(),
                         result: (BResult::from(*status), *status as f32),
                         limits: TLimit::None,
                     })
@@ -1414,6 +1442,7 @@ impl LogFile {
                     tests.push(Test {
                         name: strip_index(test_name).to_string(),
                         ttype: TType::Testjet,
+                        msg: String::new(),
                         result: (BResult::from(*status), *status as f32),
                         limits: TLimit::None,
                     })
@@ -1472,6 +1501,7 @@ impl LogFile {
                     tests.push(Test {
                         name: String::from("shorts"),
                         ttype: TType::Shorts,
+                        msg: String::new(),
                         result: (BResult::from(status), status as f32),
                         limits: TLimit::None,
                     })
@@ -1488,6 +1518,7 @@ impl LogFile {
                                 tests.push(Test {
                                     name: String::from("Programming_time"),
                                     ttype: TType::Unknown,
+                                    msg: String::new(),
                                     result: (BResult::Pass, ts as f32 / 1000.0),
                                     limits: TLimit::None,
                                 })
@@ -1536,12 +1567,14 @@ impl LogFile {
                         tests.push(Test {
                             name: format!("PS_Info_{PS_counter}%Voltage"),
                             ttype: TType::Measurement,
+                            msg: String::new(),
                             result: (BResult::Pass, voltage),
                             limits: TLimit::None,
                         });
                         tests.push(Test {
                             name: format!("PS_Info_{PS_counter}%Current"),
                             ttype: TType::Current,
+                            msg: String::new(),
                             result: (BResult::Pass, current),
                             limits: TLimit::None,
                         });
@@ -1574,6 +1607,7 @@ impl LogFile {
                     keysight_log::status_to_str(status)
                 ),
                 ttype: TType::Unknown,
+                msg: String::new(),
                 result: (BResult::Fail, 0.0),
                 limits: TLimit::None,
             });
@@ -1594,6 +1628,7 @@ impl LogFile {
             DMC_mb,
             product_id,
             index,
+            nest: None,
             result: status == 0,
             status,
             status_str: keysight_log::status_to_str(status),
@@ -1692,6 +1727,7 @@ struct Log {
     time_s: NaiveDateTime,
     time_e: NaiveDateTime,
     result: BResult, // Could use a bool too, as it can't be Unknown
+    nest: Option<usize>,
 
     results: Vec<TResult>,
     limits: Vec<TLimit>,
@@ -1714,6 +1750,7 @@ impl Log {
             time_s: log.time_start,
             time_e: log.time_end,
             result: log.result.into(),
+            nest: log.nest,
             results,
             limits,
             report: log.report,
@@ -1784,11 +1821,18 @@ impl Board {
                     "Log #{i} - {}: Pass\n",
                     log.time_e.format("%Y-%m-%d %H:%M:%S")
                 ));
+
+                if let Some(nest) = log.nest {
+                    ret.push(format!("Nest: {nest}\n"));
+                }
             } else {
                 ret.push(format!(
                     "Log #{i} - {}: Fail\n",
                     log.time_e.format("%Y-%m-%d %H:%M:%S")
                 ));
+                if let Some(nest) = log.nest {
+                    ret.push(format!("Nest: {nest}\n"));
+                }
 
                 if log.report.is_empty() {
                     ret.push(String::from("No report field found in log!\n"));
@@ -2105,7 +2149,8 @@ impl MultiBoard {
                 }
                 for (i, r) in l.results.iter().enumerate() {
                     if r.0 == BResult::Fail {
-                        failures.push((i, b.index, b.DMC.clone(), l.time_s));
+                        let index = if let Some(i) = l.nest { i } else { b.index };
+                        failures.push((i, index, b.DMC.clone(), l.time_s));
                     }
                 }
             }
@@ -2119,9 +2164,9 @@ impl MultiBoard {
         let mut resultlist: Vec<(NaiveDateTime, usize, TResult, TLimit)> = Vec::new();
 
         for sb in &self.boards {
-            let index = sb.index;
             for l in &sb.logs {
                 if let Some(result) = l.results.get(testid) {
+                    let index = if let Some(i) = l.nest { i } else { sb.index };
                     resultlist.push((l.time_s, index, *result, l.limits[testid]))
                 }
             }
@@ -2134,6 +2179,7 @@ impl MultiBoard {
 pub struct LogFileHandler {
     // Statistics:
     pp_multiboard: usize, // Panels Per Multiboard (1-20), can only be determined once everything is loaded. Might not need it.
+    nests: Option<usize>,
 
     mb_first_yield: Yield,
     sb_first_yield: Yield,
@@ -2195,6 +2241,7 @@ impl LogFileHandler {
     pub fn new() -> Self {
         LogFileHandler {
             pp_multiboard: 0,
+            nests: None,
             mb_first_yield: Yield(0, 0),
             sb_first_yield: Yield(0, 0),
             mb_final_yield: Yield(0, 0),
@@ -2321,6 +2368,7 @@ impl LogFileHandler {
                 Test {
                     name: String::new(),
                     ttype: TType::Unknown,
+                    msg: String::new(),
                     result: (BResult::Unknown, 0.0),
                     limits: TLimit::None,
                 },
@@ -2403,6 +2451,18 @@ impl LogFileHandler {
 
             if self.pp_multiboard < b.boards.len() {
                 self.pp_multiboard = b.boards.len();
+            }
+
+            for sb in &b.boards {
+                for l in &sb.logs {
+                    if let Some(i) = l.nest {
+                        if let Some(lfh_i) = self.nests {
+                            self.nests = Some(i.max(lfh_i));
+                        } else {
+                            self.nests = Some(i);
+                        }
+                    }
+                }
             }
 
             if b.golden_sample {
@@ -2533,12 +2593,18 @@ impl LogFileHandler {
                     }
                 }
                 // If not make a new one
+                let max_index = if let Some(i) = self.nests {
+                    self.pp_multiboard.max(i)
+                } else {
+                    self.pp_multiboard
+                };
+
                 let mut new_fail = FailureList {
                     test_id: failure.0,
                     name: self.testlist[failure.0].0.clone(),
                     total: 1,
                     failed: vec![(failure.2, failure.3)],
-                    by_index: vec![0; self.pp_multiboard],
+                    by_index: vec![0; max_index],
                 };
 
                 new_fail.by_index[failure.1 - 1] += 1;
