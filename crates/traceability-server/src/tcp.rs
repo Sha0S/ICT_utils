@@ -4,9 +4,7 @@ use anyhow::bail;
 use chrono::NaiveDateTime;
 use log::{debug, error, info, warn};
 use std::{
-    fs, io,
-    path::PathBuf,
-    sync::{mpsc::SyncSender, Arc, Mutex},
+    collections::HashSet, fs, io, path::PathBuf, sync::{mpsc::SyncSender, Arc, Mutex}
 };
 use tiberius::{Client, Query};
 use tokio::{io::Interest, net::TcpStream};
@@ -60,6 +58,8 @@ pub struct TcpServer {
     last_dmc: String,
     user: Arc<Mutex<String>>,
     logs: Vec<String>,
+
+    last_uploads: HashSet<PathBuf>,
     golden_samples: Vec<String>,
 }
 
@@ -91,6 +91,7 @@ impl TcpServer {
             last_dmc: String::new(),
             user,
             logs: Vec::new(),
+            last_uploads: HashSet::new(),
             golden_samples: Vec::new(),
         }
     }
@@ -653,9 +654,9 @@ impl TcpServer {
             bail!("Error reading last_date!");
         }
 
-        // Adding 5 second "grace period"
+        // Adding 5 min "grace period"
         // We had 1-2 pcbs/month which lacked result in SQL, but where OK in Simantic
-        let last_date = last_date? - chrono::Duration::seconds(5);
+        let last_date = last_date? - chrono::Duration::minutes(5);
 
         // 2 - Gather logs older than last_date
 
@@ -687,8 +688,15 @@ impl TcpServer {
         // Load the found logs
 
         let mut logs = Vec::new();
+        let mut hashset = HashSet::new();
 
         for lp in log_paths {
+            // ignore the file if it was succesfully uploaded last round
+            if self.last_uploads.contains(&lp) {
+                hashset.insert(lp.clone());
+                continue;
+            }
+
             match ICT_log_file::LogFile::load_Kaizen_FCT(&lp) {
                 Ok(log) => {
                     if log.get_mes_enabled() {
@@ -754,6 +762,9 @@ impl TcpServer {
                     }
                 }
             };
+
+            // if upload is OK, then add log to the hashset
+            hashset.insert(log.get_source().into());
         }
 
         // Write new last_date to file
@@ -762,6 +773,9 @@ impl TcpServer {
         }
 
         debug!("Converted: {}", last_date);
+
+        // update the lst of boards uploaded last round
+        self.last_uploads = hashset;
 
         debug!("Upload OK");
         Ok(String::from("OK"))
