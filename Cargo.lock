@@ -125,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "SMT_utils"
-version = "2.12.1"
+version = "2.12.2"
 dependencies = [
  "AOI_log_file",
  "CCL5_log_file",
@@ -158,6 +158,19 @@ dependencies = [
  "tokio-util",
  "tray-item",
  "winsafe",
+]
+
+[[package]]
+name = "SPI_log_file"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "env_logger",
+ "log",
+ "roxmltree 0.20.0",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
