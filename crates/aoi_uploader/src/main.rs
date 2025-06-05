@@ -112,7 +112,9 @@ async fn main() -> Result<()> {
                             debug!("Buffer already contains log. Skipping!")
                         } else {
                             if let Ok(plog) = AOI_log_file::Panel::load_xml(&log) {
-                                processed_logs.push(plog);
+                                if plog.is_from_repair() || plog.all_ok() {
+                                    processed_logs.push(plog);
+                                }
                             } else {
                                 error!("Failed to process log: {:?}", log);
                             }
@@ -142,13 +144,15 @@ async fn main() -> Result<()> {
                             }
 
                             for board in &panel.boards {
-                                let data = serde_json::to_string(&board.windows).unwrap();
+                                let data = if board.windows.len() < 50 {
+                                    serde_json::to_string(&board.windows).unwrap() }
+                                    else { "[]".to_string() };
 
                                 qtext += &format!(
                                     "('{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'),",
                                     board.barcode,
                                     time,
-                                    panel.station,
+                                    config.get_station_name(),
                                     panel.inspection_plan,
                                     panel.variant,
                                     operator,

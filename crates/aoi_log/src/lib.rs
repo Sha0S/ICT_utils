@@ -389,4 +389,16 @@ impl Panel {
 
         Ok(ret)
     }
+
+    pub fn all_ok(&self) -> bool {
+        !self.boards.iter().any(|f| !f.result)
+    }
+
+    pub fn is_from_AOI(&self) -> bool {
+        self.repair.is_none()
+    }
+
+    pub fn is_from_repair(&self) -> bool {
+        self.repair.is_some()
+    }
 }
