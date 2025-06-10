@@ -125,6 +125,7 @@ impl eframe::App for SmtYieldApp {
                         .width(50.0)
                         .selected_text(self.station_handler.print_selected_station())
                         .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut new_station, Some(SMT::Station::Spi), "SPI");
                             ui.selectable_value(&mut new_station, Some(SMT::Station::Aoi), "AOI");
                             ui.selectable_value(&mut new_station, Some(SMT::Station::Ict), "ICT");
                             ui.selectable_value(&mut new_station, Some(SMT::Station::Fct), "FCT");

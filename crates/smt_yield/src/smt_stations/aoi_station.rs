@@ -233,6 +233,7 @@ impl AoiStation {
             let query = Query::new(
                 "SELECT Station, Program
                 FROM dbo.SMT_AOI_RESULTS
+                WHERE Station LIKE 'AOI%'
                 GROUP BY Station, Program",
             );
 
@@ -383,6 +384,8 @@ impl AoiStation {
                     .collect::<Vec<String>>()
                     .join(", ");
                 query_text += &format!("Station IN ({x}) AND ");
+            } else {
+                query_text += "Station LIKE 'AOI%' AND "
             }
 
             if !programs.is_empty() {

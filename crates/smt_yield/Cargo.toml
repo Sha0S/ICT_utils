@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 AOI_log_file = { path = "..\\aoi_log\\" }
+SPI_log_file = { path = "..\\spi_log\\" }
 
 anyhow = "1.0.97"
 chrono = { version = "0.4.40" }

@@ -744,16 +744,20 @@ impl IctResultApp {
                             let operator = x.get::<&str, usize>(5).unwrap_or_default().to_owned();
 
                             if station.len() > 3 && program.len() > 3 {
-                                let sub_station = if operator.is_empty() {
-                                    "AOI/AXI"
+                                let sub_station = if station.starts_with("SPI") {
+                                    "SPI"
+                                } else if operator.is_empty() {
+                                    "AOI"
                                 } else {
-                                    "HARAN"
+                                    "AOI-HARAN"
                                 };
 
                                 let side = program[program.len() - 3..].to_string();
                                 let line_number = &station[station.len() - 2..];
 
                                 let station = format!("{sub_station} - L{line_number} - {side}");
+
+                                
 
                                 panel_lock.lock().unwrap().push(
                                     serial,
