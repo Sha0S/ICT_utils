@@ -125,13 +125,14 @@ dependencies = [
 
 [[package]]
 name = "SMT_utils"
-version = "2.12.2"
+version = "2.12.3"
 dependencies = [
  "AOI_log_file",
  "CCL5_log_file",
  "ICT_auth",
  "ICT_config",
  "ICT_log_file",
+ "SPI_log_file",
  "anyhow",
  "chrono",
  "eframe",
@@ -4352,6 +4353,7 @@ name = "smt_yield"
 version = "0.1.0"
 dependencies = [
  "AOI_log_file",
+ "SPI_log_file",
  "anyhow",
  "chrono",
  "eframe",
@@ -4377,6 +4379,25 @@ checksum = "c970269d99b64e60ec3bd6ad27270092a5394c4e309314b18ae3fe575695fbe8"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "spi_uploader"
+version = "0.1.0"
+dependencies = [
+ "ICT_config",
+ "SPI_log_file",
+ "anyhow",
+ "chrono",
+ "embed-resource",
+ "env_logger",
+ "log",
+ "rust-ini",
+ "serde_json",
+ "tiberius",
+ "tokio",
+ "tokio-util",
+ "tray-item",
 ]
 
 [[package]]
