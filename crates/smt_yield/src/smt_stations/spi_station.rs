@@ -8,7 +8,7 @@ use crate::{
     TimeFrame,
 };
 use chrono::NaiveDateTime;
-use egui::{style::ScrollStyle, Color32, Layout, RichText};
+use egui::{style::ScrollStyle, Layout};
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error, info};
 use tiberius::{Client, Query};
@@ -505,7 +505,7 @@ impl SpiStation {
         }
     }
 
-    pub fn central_panel(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    pub fn central_panel(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         if *self.status.lock().unwrap() != Status::Standby {
@@ -530,7 +530,7 @@ impl SpiStation {
                 .column(Column::auto().at_least(200.0))
                 .columns(Column::auto().resizable(true), 2)
                 .header(20.0, |mut header| {
-                    header.col(|ui| {});
+                    header.col(|_| {});
                     header.col(|ui| {
                         ui.label("Pseudo NOK");
                     });

@@ -1,8 +1,5 @@
-use chrono::{Datelike, NaiveDate, NaiveDateTime};
-use log::{debug, error, info};
-use std::collections::HashSet;
-
-use crate::{SPI_failed_board, SPI_failed_component, SPI_failed_value};
+use chrono::NaiveDateTime;
+use crate::{SPI_failed_board, SPI_failed_value};
 
 // For reading boards back from SQL,
 // where they are not combined into a Panel
