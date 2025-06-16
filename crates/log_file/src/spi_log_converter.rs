@@ -19,6 +19,17 @@ impl LogFile {
             for comp in board.components {
                 for pad in comp.pads {
                     for feature in pad.features {
+                        // solderbridge has for example no "value", make a dummy test for it
+                        if feature.values.is_empty() {
+                            tests.push(Test {
+                                    name: format!("{}.{} - {}", comp.name, pad.name, feature.name),
+                                    ttype: TType::Unknown,
+                                    msg: String::new(),
+                                    result: if feature.inspection_failed {(BResult::Fail, 1.0)} else {(BResult::Pass, 0.0)},
+                                    limits: TLimit::None
+                                });
+                        }
+
                         for value in feature.values {
                             if let Some(th) = value.thresholds {
                                 tests.push(Test {
