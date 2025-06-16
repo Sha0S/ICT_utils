@@ -1,0 +1,23 @@
+{
+    "sql_ip": "10.207.132.132",
+    "sql_db": "VES2PTS1",
+    "sql_pass": "nF9VwKyC1tLreywPO9ez",
+    "sql_user": "smt_ves2pts_rw",
+
+    "serial_port": "COM4",
+
+    "product_list": [
+        {
+            "name": "Kaizen DRV",
+            "serial_ids": ["Ab847026", "Eb847026", "AB847026", "EB847026010" ],
+            "uses_fct": false,
+            "boards_per_frame": 4
+        },
+        {
+            "name": "Kaizen CMD",
+            "serial_ids": ["DB828853", "GB828853" ],
+            "uses_fct": true,
+            "boards_per_frame": 2
+        }
+    ]
+}
