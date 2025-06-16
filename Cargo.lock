@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "SMT_utils"
-version = "2.12.3"
+version = "2.12.4"
 dependencies = [
  "AOI_log_file",
  "CCL5_log_file",
@@ -165,12 +165,12 @@ dependencies = [
  "embed-resource",
  "encoding_rs",
  "env_logger",
- "image 0.25.5",
+ "image 0.24.9",
  "log",
  "once_cell",
  "pwhash",
  "rfd",
- "roxmltree 0.20.0",
+ "roxmltree 0.19.0",
  "rust-ini",
  "rust_xlsxwriter",
  "serde",
@@ -4487,6 +4487,18 @@ checksum = "c970269d99b64e60ec3bd6ad27270092a5394c4e309314b18ae3fe575695fbe8"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "spi_statistics"
+version = "0.1.0"
+dependencies = [
+ "SPI_log_file",
+ "anyhow",
+ "chrono",
+ "embed-resource",
+ "env_logger",
+ "log",
 ]
 
 [[package]]
