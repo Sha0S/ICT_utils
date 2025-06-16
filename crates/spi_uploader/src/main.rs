@@ -111,7 +111,7 @@ async fn main() -> Result<()> {
                             skipped_logs += 1;
                             debug!("Buffer already contains log. Skipping!")
                         } else {
-                            if let Ok(plog) = SPI_log_file::Panel::load(&log) {
+                            if let Ok(plog) = SPI_log_file::Panel::load(&log, true) {
                                 processed_logs.push(plog);
                             } else {
                                 error!("Failed to process log: {:?}", log);

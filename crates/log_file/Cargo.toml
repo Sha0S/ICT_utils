@@ -16,3 +16,4 @@ env_logger = "0"
 log = "0"
 
 ICT_config = { path = "..\\config"}
+SPI_log_file = { path = "..\\spi_log\\" }

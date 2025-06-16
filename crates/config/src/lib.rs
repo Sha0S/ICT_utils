@@ -170,6 +170,23 @@ impl Product {
             None
         }
     }
+
+    pub fn filter(&self, p: &Path) -> bool {
+        for modifier in &self.modifiers {
+            if let Some(sufix) = modifier.strip_prefix("filter:") {
+                if let Some(filename) = p.file_stem() {
+                    if filename.to_string_lossy().contains(sufix) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        }
+
+
+        true
+    }
 }
 
 /* Config */

@@ -11,6 +11,7 @@ use chrono::{Datelike, NaiveDateTime, NaiveTime, Timelike};
 use log::{debug, error, info, trace, warn};
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
+mod spi_log_converter;
 mod dcdc_fct_log;
 mod kaizen_fct_log;
 mod keysight_log;
@@ -393,6 +394,7 @@ impl Test {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LogFileType {
     Unknown,
+    SPI,
     ICT,
     FCT_Kaizen,
     FCT_DCDC,
@@ -434,12 +436,16 @@ impl LogFile {
     }
 
     pub fn load_panel(p: &Path) -> anyhow::Result<Vec<Self>> {
-        if p.extension().is_some_and(|f| f == "csv") {
+        let ext = p.extension();
+
+        if ext.is_some_and(|f| f == "csv") {
             let ret = LogFile::load_Kaizen_FCT(p);
             ret.map(|f| vec![f])
-        } else if p.extension().is_some_and(|f| f == "pv") {
+        } else if ext.is_some_and(|f| f == "pv") {
             let ret = LogFile::load_DCDC_FCT(p);
             ret.map(|f| vec![f])
+        } else if ext.is_some_and(|f| f == "xml") {
+            LogFile::load_SPI_log(p)
         } else {
             LogFile::load_ICT_panel(p)
         }
@@ -2287,7 +2293,9 @@ impl LogFileHandler {
 
         self.sourcelist.insert(source.clone());
 
-        if let Ok(logs) = LogFile::load_panel(p) {
+        let file = LogFile::load_panel(p);
+
+        if let Ok(logs) =  file {
             let mut all_ok = true;
             for log in logs {
                 if !self.push(log) {
@@ -2297,7 +2305,7 @@ impl LogFileHandler {
 
             all_ok
         } else {
-            error!("Failed to load panel from log: {:?}", p);
+            error!("Failed to load panel from log: {:?}\n{:?}", p, file);
 
             // Try using the old implementation
             if let Ok(log) = LogFile::load(p) {

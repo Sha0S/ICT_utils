@@ -122,7 +122,7 @@ pub struct Value {
 }
 
 impl Panel {
-    pub fn load<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self> {
+    pub fn load<P: AsRef<Path> + std::fmt::Debug>(path: P, only_fails: bool) -> Result<Self> {
         debug!("Processing XML: {path:?}");
 
         let file = std::fs::read_to_string(path)?;
@@ -138,10 +138,12 @@ impl Panel {
             .attribute("Name")
             .context("Missing attribute: 'Name'")?
             .to_string();
+
+        // Variant is optional!
         let variant = datamodel
             .attribute("Variant")
-            .context("Missing attribute: 'Variant'")?
-            .to_string();
+            .unwrap_or_default().to_string();
+
         let barcode = datamodel
             .attribute("Barcode")
             .context("Missing attribute: 'Barcode'")?
@@ -198,7 +200,7 @@ impl Panel {
                     if !panel_node.attribute("Class").is_some_and(|f| f == "Board") {
                         continue;
                     }
-                    boards.push(Board::load(panel_node)?);
+                    boards.push(Board::load(panel_node, only_fails)?);
                 }
 
                 _ => {}
@@ -226,7 +228,7 @@ impl Panel {
 }
 
 impl Board {
-    fn load(node: Node<'_, '_>) -> Result<Self> {
+    fn load(node: Node<'_, '_>, only_fails: bool) -> Result<Self> {
         if !node.attribute("Class").is_some_and(|f| f == "Board") {
             error_and_bail!("Node is not a Board node!");
         }
@@ -260,7 +262,7 @@ impl Board {
                     }
 
                     // break early if no components  failed
-                    if inspection_failed.is_some_and(|f| f != "true") {
+                    if only_fails && inspection_failed.is_some_and(|f| f != "true") {
                         break;
                     }
                 }
@@ -269,7 +271,7 @@ impl Board {
                         continue;
                     }
 
-                    components.push(Component::load(child)?);
+                    components.push(Component::load(child, only_fails)?);
                 }
                 _ => {}
             }
@@ -304,7 +306,7 @@ impl Board {
 }
 
 impl Component {
-    fn load(node: Node<'_, '_>) -> Result<Self> {
+    fn load(node: Node<'_, '_>, only_fails: bool) -> Result<Self> {
         if !node.attribute("Class").is_some_and(|f| f == "Comp") {
             error_and_bail!("Node is not a Component node!");
         }
@@ -338,7 +340,7 @@ impl Component {
                     }
 
                     // break early if no pads failed
-                    if inspection_failed.is_some_and(|f| f != "true") {
+                    if only_fails && inspection_failed.is_some_and(|f| f != "true") {
                         break;
                     }
                 }
@@ -348,7 +350,7 @@ impl Component {
                         continue;
                     }
 
-                    pads.push(Pad::load(child)?);
+                    pads.push(Pad::load(child, only_fails)?);
                 }
 
                 _ => {}
@@ -387,7 +389,7 @@ impl Component {
 }
 
 impl Pad {
-    fn load(node: Node<'_, '_>) -> Result<Self> {
+    fn load(node: Node<'_, '_>, only_fails: bool) -> Result<Self> {
         if !node.attribute("Class").is_some_and(|f| f == "Solder") {
             error_and_bail!("Node is not a Solder node!");
         }
@@ -426,7 +428,7 @@ impl Pad {
                     }
 
                     // break early if no pads failed
-                    if inspection_failed.is_some_and(|f| f != "true") {
+                    if only_fails && inspection_failed.is_some_and(|f| f != "true") {
                         break;
                     }
                 }
@@ -434,7 +436,7 @@ impl Pad {
                 "Features" => {
                     for feature in child.children() {
                         if feature.tag_name().name() != "Feature" { continue; }
-                        features.push(Feature::load(feature)?);
+                        features.push(Feature::load(feature, only_fails)?);
                     }
                 }
 
@@ -474,7 +476,7 @@ impl Pad {
 }
 
 impl Feature {
-    fn load(node: Node<'_, '_>) -> Result<Self> {
+    fn load(node: Node<'_, '_>, only_fails: bool) -> Result<Self> {
         if node.tag_name().name() != "Feature" {
             error_and_bail!("Node is not a Feature node! {}", node.tag_name().name() );
         }
@@ -506,7 +508,7 @@ impl Feature {
                     }
 
                     // break early if no measurements failed
-                    if inspection_failed.is_some_and(|f| f != "true") {
+                    if only_fails && inspection_failed.is_some_and(|f| f != "true") {
                         break;
                     }
                 }
@@ -691,7 +693,7 @@ mod tests {
 
     #[test]
     fn load_log() {
-        let spi_log = Panel::load(".\\test_files\\B828853_TOP.xml").unwrap();
+        let spi_log = Panel::load(".\\test_files\\B828853_TOP.xml", true).unwrap();
 
 
         for board in &spi_log.boards {

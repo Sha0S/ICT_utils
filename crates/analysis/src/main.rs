@@ -29,7 +29,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const PRODUCT_LIST: &str = ".\\products";
 include!("locals.rs");
 
-const ACCEPTED_EXTENSION: [&str; 3] = ["ict", "csv", "pv"];
+const ACCEPTED_EXTENSION: [&str; 4] = ["ict", "csv", "pv", "xml"];
 type PathAndTime = (PathBuf, DateTime<Local>);
 
 fn get_logs_in_path(
@@ -129,7 +129,9 @@ fn get_logs_for_timeframe(
                 if let Ok(x) = path.metadata() {
                     let ct: DateTime<Local> = x.modified().unwrap().into();
                     if ct >= start && end.is_none_or(|f| ct < f) {
-                        ret.push((path.to_path_buf(), ct));
+                        if product.filter(&path) {
+                            ret.push((path.to_path_buf(), ct));
+                        }
                     }
                 }
             }
