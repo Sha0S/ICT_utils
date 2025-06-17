@@ -4490,18 +4490,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spi_statistics"
-version = "0.1.0"
-dependencies = [
- "SPI_log_file",
- "anyhow",
- "chrono",
- "embed-resource",
- "env_logger",
- "log",
-]
-
-[[package]]
 name = "spi_uploader"
 version = "0.1.0"
 dependencies = [

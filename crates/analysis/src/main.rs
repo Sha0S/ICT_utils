@@ -87,7 +87,7 @@ fn get_subdirs_for_timeframe(
         let sub_dir = match product.get_tester_type() {
             TesterType::Ict => start_date.format("%Y_%m_%d"),
             TesterType::FctKaizen => start_date.format("%Y/%m/%d"),
-            TesterType::FctDcdc => start_date.format("W%W_%Y/B70016003"),
+            TesterType::FctDcdc => start_date.format("W%W_%Y"),
         };
 
         debug!("\tsubdir: {}", sub_dir);
@@ -131,6 +131,27 @@ fn get_logs_for_timeframe(
                     if ct >= start && end.is_none_or(|f| ct < f) {
                         if product.filter(&path) {
                             ret.push((path.to_path_buf(), ct));
+                        }
+                    }
+                }
+            } else if path.is_dir() { // we can check one dir deeper (DCDC FCT compatibility)
+                for file2 in fs::read_dir(path)? {
+                    let file2 = file2?;
+                    let path2 = file2.path();
+
+                    // if the path is a file and it has NO extension or the extension is in the accepted list
+                    if path2.is_file()
+                        && path2
+                            .extension()
+                            .is_none_or(|f| ACCEPTED_EXTENSION.iter().any(|f2| f == *f2))
+                    {
+                        if let Ok(x) = path2.metadata() {
+                            let ct: DateTime<Local> = x.modified().unwrap().into();
+                            if ct >= start && end.is_none_or(|f| ct < f) {
+                                if product.filter(&path2) {
+                                    ret.push((path2.to_path_buf(), ct));
+                                }
+                            }
                         }
                     }
                 }
