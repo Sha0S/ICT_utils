@@ -1,9 +1,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #![allow(non_snake_case)]
 
+/*
+TODO:
+- logging
+- send in partial frame
+- check for gs
+*/
+
 use egui::{Color32, Context, RichText};
 use log::{debug, error, info};
-use std::{collections::VecDeque, sync::{Arc, Mutex}};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
+use tokio_stream::StreamExt;
 use SQL::SQL;
 
 use crate::config::Product;
@@ -38,7 +49,7 @@ struct App {
     error_msg: Arc<Mutex<String>>,
 
     client: Arc<tokio::sync::Mutex<SQL>>,
-    port: Arc<Mutex<Box<dyn serialport::SerialPort + 'static>>>,
+    port: Arc<Mutex<Option<Box<dyn serialport::SerialPort + 'static>>>>,
 
     input_string: String,
     queue: VecDeque<String>,
@@ -53,6 +64,7 @@ enum Status {
     Initializing,
     Error,
     Standby,
+    SendingEnable,
     Loading,
 }
 
@@ -66,7 +78,7 @@ impl Serial {
     fn frame(&self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.add_sized(
-                (300.0, 80.0),
+                (300.0, 70.0),
                 egui::Label::new(RichText::new(&self.dmc).size(20.0)),
             );
             ui.add_space(10.0);
@@ -74,6 +86,14 @@ impl Serial {
             ui.add_space(10.0);
             self.fct.frame(ui);
         });
+    }
+
+    fn ok(&self) -> bool {
+        self.ict.ok() && self.fct.ok()
+    }
+
+    fn nok(&self) -> bool {
+        !self.ok()
     }
 }
 
@@ -86,6 +106,13 @@ enum TestResult {
 }
 
 impl TestResult {
+    fn ok(&self) -> bool {
+        match self {
+            TestResult::NotTested | TestResult::Pass => true,
+            TestResult::None | TestResult::Fail => false,
+        }
+    }
+
     fn print(&self) -> &str {
         match self {
             TestResult::NotTested => "",
@@ -115,11 +142,11 @@ impl TestResult {
         egui::Frame::new()
             .fill(self.color())
             .corner_radius(5)
-            .inner_margin(10)
+            .inner_margin(5)
             .show(ui, |ui| {
                 ui.add_sized(
                     (100.0, 50.0),
-                    egui::Label::new(RichText::new(self.print()).color(Color32::BLACK).size(40.0)),
+                    egui::Label::new(RichText::new(self.print()).color(Color32::BLACK).size(36.0)),
                 );
             });
     }
@@ -143,7 +170,7 @@ impl App {
             .flow_control(serialport::FlowControl::None)
             .timeout(std::time::Duration::from_millis(10))
             .open()
-            .expect("Failed to open port");
+            .ok();
 
         Ok(App {
             config,
@@ -192,31 +219,43 @@ impl App {
 
             ctx.request_repaint();
         });
-
     }
 
     fn send_enable(&self, ctx: Context) {
-
+        debug!("Sending enable signal!");
         let port = self.port.clone();
         let serials = self.serials.clone();
 
+        let err_message = self.error_msg.clone();
+        let status = self.status.clone();
+        *status.lock().unwrap() = Status::SendingEnable;
+
         tokio::spawn(async move {
-            let buf = "Enable\r\n".as_bytes();
-            port.lock().unwrap().write(buf).unwrap();
+            if let Some(p) = port.lock().unwrap().as_mut() {
+                let buf = "Enable\r\n".as_bytes();
+                if p.write(buf).is_err() {
+                    *err_message.lock().unwrap() = "COM port error!".to_string();
+                }
+            }
 
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             serials.lock().unwrap().clear();
+            debug!("Sending disable signal!");
 
-            let buf = "Disable\r\n".as_bytes();
-            port.lock().unwrap().write(buf).unwrap();
+            if let Some(p) = port.lock().unwrap().as_mut() {
+                let buf = "Disable\r\n".as_bytes();
+                if p.write(buf).is_err() {
+                    *err_message.lock().unwrap() = "COM port error!".to_string();
+                }
+            }
+
+            *status.lock().unwrap() = Status::Standby;
             ctx.request_repaint();
         });
-    }    
+    }
 
     fn push(&mut self, serial: String, ctx: Context) {
-        if *self.status.lock().unwrap() != Status::Standby {
-            return;
-        }
+        info!("Push: {serial}");
 
         let product = self.config.get_product(&serial);
         self.error_msg.lock().unwrap().clear();
@@ -231,11 +270,18 @@ impl App {
 
         if let Some(p) = &self.product {
             if p.name != product.name {
-                *self.error_msg.lock().unwrap() =
+                if self.serials.lock().unwrap().is_empty() {
+                    debug!("Replacing with product: {}", product.name);
+                    self.product = Some(product.clone());
+                } else {
+                    error!("Product type mismatch!");
+                    *self.error_msg.lock().unwrap() =
                     String::from("A termék típus nem eggyezik!\nThe product types do not match!\nТипи товарів не збігаються!");
-                return;
+                    return;
+                }
             }
         } else {
+            debug!("Initializing new product: {}", product.name);
             self.product = Some(product.clone());
         }
 
@@ -243,10 +289,6 @@ impl App {
         let serials_lock = self.serials.lock().unwrap();
         for s in serials_lock.iter() {
             if s.dmc == serial {
-                /*
-                *self.error_msg.lock().unwrap() =
-                    format!("{serial}:\nA keretben már szerepel egy azonos DMC!\nFrame already contains this DMC!\nРамка вже містить цей DMC!");
-                */
                 return;
             }
         }
@@ -264,6 +306,7 @@ impl App {
         let serials = self.serials.clone();
 
         tokio::spawn(async move {
+            /*
             loop {
                 match client.lock().await.check_connection().await {
                     true => break,
@@ -275,68 +318,54 @@ impl App {
                     }
                 }
             }
+             */
 
             // Connection is OK.
             let mut c_lock = client.lock().await;
             let mut sql_client = c_lock.client().unwrap();
 
-            // Query the serial for ICT
+            // Query the serial for ICT and FCT
             let mut query = tiberius::Query::new(
                 "SELECT TOP(1) Result
-                FROM SMT_Test 
-                WHERE Serial_NMBR = @P1 
-                ORDER BY Date_Time DESC",
+                FROM dbo.SMT_Test
+                WHERE Serial_NMBR = @P1
+                ORDER BY Date_Time DESC;
+
+                SELECT TOP(1) Result
+                FROM dbo.SMT_FCT_Test
+                WHERE Serial_NMBR = @P1
+                ORDER BY Date_Time DESC;",
             );
             query.bind(&serial);
 
             let mut ict_result = TestResult::None;
-            if let Ok(qstream) = query.query(&mut sql_client).await {
-                if let Some(row) = qstream.into_row().await.unwrap() {
-                    ict_result = TestResult::parse(row.get::<&str, usize>(0).unwrap());
+            let mut fct_result = if product.uses_fct {
+                TestResult::None
+            } else {
+                TestResult::NotTested
+            };
+            if let Ok(mut qstream) = query.query(&mut sql_client).await {
+                while let Some(row) = qstream.next().await {
+                    let row = row.unwrap();
+                    match row {
+                        tiberius::QueryItem::Row(x) if x.result_index() == 0 => {
+                            ict_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
+                        }
+                        tiberius::QueryItem::Row(x) if x.result_index() == 1 => {
+                            fct_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
+                        }
+                        _ => {}
+                    }
                 }
             } else {
                 *err_message.lock().unwrap() = String::from("SQL hiba!\nSQL error!");
             }
 
-            // Query the serial for FCT, if the product uses it.
-            let mut fct_result = TestResult::NotTested;
-            if product.uses_fct {
-                let mut query = tiberius::Query::new(
-                    "SELECT TOP(1) Result
-                    FROM SMT_FCT_Test 
-                    WHERE Serial_NMBR = @P1 
-                    ORDER BY Date_Time DESC",
-                );
-                query.bind(&serial);
-
-                if let Ok(qstream) = query.query(&mut sql_client).await {
-                    if let Some(row) = qstream.into_row().await.unwrap() {
-                        fct_result = TestResult::parse(row.get::<&str, usize>(0).unwrap());
-                    } else {
-                        fct_result = TestResult::None;
-                    }
-                } else {
-                    *err_message.lock().unwrap() = String::from("SQL hiba!\nSQL error!");
-                }
-            }
-
-            if ict_result == TestResult::Pass {
-                if fct_result == TestResult::Pass || fct_result == TestResult::NotTested {
-                    serials.lock().unwrap().push(Serial {
-                        dmc: serial,
-                        ict: ict_result,
-                        fct: fct_result,
-                    });
-                } else {
-                    *err_message.lock().unwrap() = format!(
-                        "{serial}:\nA termék FCT NOK!\nThe product is FCT NOK\nПродукт є FCT NOK!"
-                    );
-                }
-            } else {
-                *err_message.lock().unwrap() = format!(
-                    "{serial}:\nA termék ICT NOK!\nThe product is ICT NOK\nПродукт є ICT NOK!"
-                );
-            }
+            serials.lock().unwrap().push(Serial {
+                dmc: serial,
+                ict: ict_result,
+                fct: fct_result,
+            });
 
             *status.lock().unwrap() = Status::Standby;
             message.lock().unwrap().clear();
@@ -348,27 +377,48 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::bottom("Input").show(ctx, |ui| {
-            let mut text_edit = egui::TextEdit::singleline(&mut self.input_string)
-                .desired_width(550.0)
-                .show(ui);
+        let mut request_clear = false;
 
-            if text_edit.response.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-            {
-                self.queue.push_back(self.input_string.clone());
-                self.input_string.clear();
+        egui::TopBottomPanel::bottom("Input").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let text_edit = egui::TextEdit::singleline(&mut self.input_string)
+                    .desired_width(400.0)
+                    .show(ui);
+
+                if text_edit.response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                {
+                    self.queue.push_back(self.input_string.clone());
+                    self.input_string.clear();
+                }
+
                 text_edit.response.request_focus();
-            }
+
+                if ui.button("Reset").clicked() && *self.status.lock().unwrap() == Status::Standby {
+                    debug!("Requested reset by user!");
+                    request_clear = true;
+                }
+            });
         });
 
-        if *self.status.lock().unwrap() == Status::Standby {
+        let board_num = self.serials.lock().unwrap().len() as u8;
+        if *self.status.lock().unwrap() == Status::Standby
+            && self
+                .product
+                .as_ref()
+                .is_none_or(|f| f.boards_per_frame.gt(&board_num))
+        {
             if let Some(next) = self.queue.pop_front() {
                 self.push(next, ctx.clone());
             }
+        } else if *self.status.lock().unwrap() == Status::SendingEnable {
+            self.queue.clear();
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.port.lock().unwrap().is_none() {
+                ui.colored_label(Color32::RED, "COM port is not connected!");
+            }
+
             let status = *self.status.lock().unwrap();
             match status {
                 Status::UnInitialized => {
@@ -386,18 +436,54 @@ impl eframe::App for App {
 
                         ui.add_space(30.0);
 
+                        let mut all_ok = true;
+
                         let serial_lock = self.serials.lock().unwrap();
 
                         for serial in serial_lock.iter() {
                             serial.frame(ui);
+                            if serial.nok() {
+                                all_ok = false;
+                            }
+                        }
+
+                        if !all_ok {
+                            ui.vertical_centered_justified(|ui| {
+                                egui::Frame::new()
+                                    .fill(Color32::RED)
+                                    .corner_radius(5)
+                                    .inner_margin(5)
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            RichText::new(
+                                                "Távolítsa el a hibás terméket!
+                                                        Remove the defective product!
+                                                        Видаліть бракований товар!
+                                                        Alisin ang sira na produkto!",
+                                            )
+                                            .color(Color32::BLACK)
+                                            .size(16.0),
+                                        );
+
+                                        ui.add_space(10.0);
+
+                                        if ui.button(RichText::new("OK").size(20.0)).clicked() {
+                                            request_clear = true;
+                                        }
+                                    });
+                            });
                         }
 
                         if status == Status::Loading {
                             ui.vertical_centered(|ui| {
                                 ui.add(egui::Spinner::new().size(100.0));
                             });
-                        } else if serial_lock.len() >= p.boards_per_frame as usize {
-                            self.send_enable(ctx.clone());
+                        } else if serial_lock.len() >= p.boards_per_frame as usize
+                            && !serial_lock.iter().any(|f| f.nok())
+                        {
+                            if status == Status::Standby {
+                                self.send_enable(ctx.clone());
+                            }
                             ui.vertical_centered_justified(|ui| {
                                 egui::Frame::new()
                                     .fill(Color32::GREEN)
@@ -406,17 +492,16 @@ impl eframe::App for App {
                                     .show(ui, |ui| {
                                         ui.label(
                                             RichText::new(
-                                                "Nyomd meg a zöld gombot!\nPress the green button!\nТисніть зелену кнопку!\nPindutin ang berdeng pindutan!"
+                                                "Nyomd meg a zöld gombot!
+                                                Press the green button!
+                                                Тисніть зелену кнопку!
+                                                Pindutin ang berdeng pindutan!",
                                             )
-                                                .color(Color32::BLACK)
-                                                .size(16.0),
+                                            .color(Color32::BLACK)
+                                            .size(16.0),
                                         );
                                     });
                             });
-                        }
-
-                        if serial_lock.is_empty() && status != Status::Loading {
-                            self.product = None;
                         }
                     }
                 }
@@ -439,7 +524,14 @@ impl eframe::App for App {
                         });
                 });
             }
-            drop(err_lock);
         });
+
+        if request_clear {
+            self.serials.lock().unwrap().clear();
+            self.product = None;
+            self.queue.clear();
+        }
+
+        ctx.request_repaint_after_secs(0.5);
     }
 }
