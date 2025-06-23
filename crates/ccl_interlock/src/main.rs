@@ -3,13 +3,12 @@
 
 /*
 TODO:
-- logging
-- send in partial frame
-- check for gs
+- check for gs - main DMC works, could check for others
 */
 
+use anyhow::bail;
 use egui::{Color32, Context, RichText};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -23,9 +22,40 @@ mod config;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+macro_rules! error_and_bail {
+    ($($arg:tt)+) => {
+        error!($($arg)+);
+        bail!($($arg)+);
+    };
+}
+
+fn setup_logger() -> Result<(), fern::InitError> {
+    let date = chrono::Local::now().date_naive().format("%F");
+    let log_name = format!("./log/{}_ccl_interlock.log", date);
+
+    let _ = std::fs::create_dir("./log/");
+
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} - {}] {}: {}",
+                chrono::Local::now().format("%F %T"),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Error)
+        .level_for("ccl_interlock", log::LevelFilter::Info)
+        .chain(std::io::stdout())
+        .chain(fern::log_file(log_name)?)
+        .apply()?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    setup_logger()?;
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -33,17 +63,23 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    info!("Staring interlock program.");
+
     _ = eframe::run_native(
         format!("CCL interlock (v{VERSION})").as_str(),
         options,
         Box::new(|_| Ok(Box::new(App::new()?))),
     );
 
+    info!("Closing interlock program.");
+
     Ok(())
 }
 
 struct App {
     config: config::Config,
+    golden_samples: Arc<Mutex<Vec<String>>>,
+
     status: Arc<Mutex<Status>>,
     status_msg: Arc<Mutex<String>>,
     error_msg: Arc<Mutex<String>>,
@@ -52,6 +88,7 @@ struct App {
     port: Arc<Mutex<Option<Box<dyn serialport::SerialPort + 'static>>>>,
 
     input_string: String,
+    input_password: String,
     queue: VecDeque<String>,
 
     product: Option<Product>,
@@ -65,11 +102,13 @@ enum Status {
     Error,
     Standby,
     SendingEnable,
+    PasswordReq,
     Loading,
 }
 
 struct Serial {
     dmc: String,
+    gs: bool,
     ict: TestResult,
     fct: TestResult,
 }
@@ -82,14 +121,28 @@ impl Serial {
                 egui::Label::new(RichText::new(&self.dmc).size(20.0)),
             );
             ui.add_space(10.0);
-            self.ict.frame(ui);
-            ui.add_space(10.0);
-            self.fct.frame(ui);
+
+            if self.gs {
+                egui::Frame::new()
+                    .fill(Color32::RED)
+                    .corner_radius(5)
+                    .inner_margin(5)
+                    .show(ui, |ui| {
+                        ui.add_sized(
+                            (230.0, 50.0),
+                            egui::Label::new(RichText::new("GS").color(Color32::BLACK).size(36.0)),
+                        );
+                    });
+            } else {
+                self.ict.frame(ui);
+                ui.add_space(10.0);
+                self.fct.frame(ui);
+            }
         });
     }
 
     fn ok(&self) -> bool {
-        self.ict.ok() && self.fct.ok()
+        !self.gs && self.ict.ok() && self.fct.ok()
     }
 
     fn nok(&self) -> bool {
@@ -113,10 +166,14 @@ impl TestResult {
         }
     }
 
+    fn nok(&self) -> bool {
+        !self.ok()
+    }
+
     fn print(&self) -> &str {
         match self {
             TestResult::NotTested => "",
-            TestResult::None => "N/A",
+            TestResult::None => "-",
             TestResult::Pass => "OK",
             TestResult::Fail => "NOK",
         }
@@ -125,7 +182,7 @@ impl TestResult {
     fn color(&self) -> Color32 {
         match self {
             TestResult::NotTested => Color32::GRAY,
-            TestResult::None => Color32::YELLOW,
+            TestResult::None => Color32::RED,
             TestResult::Pass => Color32::GREEN,
             TestResult::Fail => Color32::RED,
         }
@@ -154,14 +211,26 @@ impl TestResult {
 
 impl App {
     fn new() -> anyhow::Result<Self> {
-        let config = config::Config::load("ccl_config.json")?;
+        let config = match config::Config::load("ccl_config.json") {
+            Ok(c) => c,
+            Err(e) => {
+                error_and_bail!("Failed to load config: {}", e);
+            }
+        };
 
-        let client = Arc::new(tokio::sync::Mutex::new(SQL::new(
+        let sql = match SQL::new(
             &config.sql_ip,
             &config.sql_db,
             &config.sql_user,
             &config.sql_pass,
-        )?));
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                error_and_bail!("Failed to open sql connection: {}", e);
+            }
+        };
+
+        let client = Arc::new(tokio::sync::Mutex::new(sql));
 
         let port = serialport::new(&config.serial_port, 9600)
             .data_bits(serialport::DataBits::Eight)
@@ -172,14 +241,20 @@ impl App {
             .open()
             .ok();
 
+        if port.is_none() {
+            error!("Failed to oppen serial COM port! ({})", config.serial_port);
+        }
+
         Ok(App {
             config,
+            golden_samples: Arc::new(Mutex::new(Vec::new())),
             status: Arc::new(Mutex::new(Status::UnInitialized)),
             status_msg: Arc::new(Mutex::new(String::from("Initializing..."))),
             error_msg: Arc::new(Mutex::new(String::new())),
             client,
             port: Arc::new(Mutex::new(port)),
             input_string: String::new(),
+            input_password: String::new(),
             queue: VecDeque::new(),
             product: None,
             serials: Arc::new(Mutex::new(Vec::new())),
@@ -192,8 +267,6 @@ impl App {
             return;
         }
 
-        info!("Starting initialization");
-
         *self.status.lock().unwrap() = Status::Initializing;
         *self.status_msg.lock().unwrap() = String::from("Inicializáció...");
 
@@ -201,6 +274,8 @@ impl App {
         let status = self.status.clone();
         let message = self.status_msg.clone();
         let client = self.client.clone();
+        let golden_samples = self.golden_samples.clone();
+        let products = self.config.product_list.clone();
 
         tokio::spawn(async move {
             loop {
@@ -210,8 +285,37 @@ impl App {
                         *status.lock().unwrap() = Status::Error;
                         *message.lock().unwrap() =
                             format!("Sikertelen csatlakozás az SQL szerverhez!\n({e:?})");
+                        error!("Could not connect to the SQL server! {e}");
                     }
                 }
+            }
+
+            if let Ok(mut qstream) = client
+                .lock()
+                .await
+                .client()
+                .unwrap()
+                .query("SELECT Serial_NMBR FROM SMT_ICT_GS", &[])
+                .await
+            {
+                while let Some(row) = qstream.next().await {
+                    let row = row.unwrap();
+                    match row {
+                        tiberius::QueryItem::Row(x) => {
+                            let serial = x.get::<&str, usize>(0).unwrap();
+
+                            for product in &products {
+                                if product.check_serial(serial) {
+                                    golden_samples.lock().unwrap().push(serial.to_string());
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            } else {
+                error!("Could not load the GS serials from SQL!");
             }
 
             *status.lock().unwrap() = Status::Standby;
@@ -222,18 +326,29 @@ impl App {
     }
 
     fn send_enable(&self, ctx: Context) {
-        debug!("Sending enable signal!");
         let port = self.port.clone();
         let serials = self.serials.clone();
-
         let err_message = self.error_msg.clone();
         let status = self.status.clone();
         *status.lock().unwrap() = Status::SendingEnable;
 
+        info!(
+            "Sending enable! Serials: {}",
+            serials
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|f| f.dmc.clone())
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+
         tokio::spawn(async move {
+            debug!("Sending enable signal!");
             if let Some(p) = port.lock().unwrap().as_mut() {
                 let buf = "Enable\r\n".as_bytes();
                 if p.write(buf).is_err() {
+                    error!("COM port error!");
                     *err_message.lock().unwrap() = "COM port error!".to_string();
                 }
             }
@@ -245,6 +360,7 @@ impl App {
             if let Some(p) = port.lock().unwrap().as_mut() {
                 let buf = "Disable\r\n".as_bytes();
                 if p.write(buf).is_err() {
+                    error!("COM port error!");
                     *err_message.lock().unwrap() = "COM port error!".to_string();
                 }
             }
@@ -255,7 +371,7 @@ impl App {
     }
 
     fn push(&mut self, serial: String, ctx: Context) {
-        info!("Push: {serial}");
+        debug!("Push: {serial}");
 
         let product = self.config.get_product(&serial);
         self.error_msg.lock().unwrap().clear();
@@ -263,6 +379,7 @@ impl App {
         if product.is_none() {
             *self.error_msg.lock().unwrap() =
                 String::from("Ismeretlen termék!\nUnknown product type!\nНевідомий тип товару!");
+            error!("Unknown product! Serial: {}", serial);
             return;
         }
 
@@ -294,7 +411,7 @@ impl App {
         }
         drop(serials_lock);
 
-        info!("Starting query");
+        debug!("Starting query");
 
         *self.status.lock().unwrap() = Status::Loading;
         *self.status_msg.lock().unwrap() = format!("{} lekérdezése...", self.input_string);
@@ -304,6 +421,7 @@ impl App {
         let err_message = self.error_msg.clone();
         let client = self.client.clone();
         let serials = self.serials.clone();
+        let golden_samples = self.golden_samples.clone();
 
         tokio::spawn(async move {
             /*
@@ -325,17 +443,26 @@ impl App {
             let mut sql_client = c_lock.client().unwrap();
 
             // Query the serial for ICT and FCT
-            let mut query = tiberius::Query::new(
-                "SELECT TOP(1) Result
-                FROM dbo.SMT_Test
-                WHERE Serial_NMBR = @P1
-                ORDER BY Date_Time DESC;
+            let mut query = if product.uses_fct {
+                tiberius::Query::new(
+                    "SELECT TOP(1) Result
+                    FROM dbo.SMT_Test
+                    WHERE Serial_NMBR = @P1
+                    ORDER BY Date_Time DESC;
 
-                SELECT TOP(1) Result
-                FROM dbo.SMT_FCT_Test
-                WHERE Serial_NMBR = @P1
-                ORDER BY Date_Time DESC;",
-            );
+                    SELECT TOP(1) Result
+                    FROM dbo.SMT_FCT_Test
+                    WHERE Serial_NMBR = @P1
+                    ORDER BY Date_Time DESC;",
+                )
+            } else {
+                tiberius::Query::new(
+                    "SELECT TOP(1) Result
+                    FROM dbo.SMT_Test
+                    WHERE Serial_NMBR = @P1
+                    ORDER BY Date_Time DESC;",
+                )
+            };
             query.bind(&serial);
 
             let mut ict_result = TestResult::None;
@@ -358,11 +485,23 @@ impl App {
                     }
                 }
             } else {
+                error!("SQL error!");
                 *err_message.lock().unwrap() = String::from("SQL hiba!\nSQL error!");
+            }
+
+            let gs = golden_samples.lock().unwrap().contains(&serial);
+
+            if gs {
+                error!("Serial is a GOLDEN SAMPLE! {serial}");
+            }
+
+            if ict_result.nok() || fct_result.nok() {
+                error!("Product failed ICT/FCT: {serial}");
             }
 
             serials.lock().unwrap().push(Serial {
                 dmc: serial,
+                gs,
                 ict: ict_result,
                 fct: fct_result,
             });
@@ -391,11 +530,22 @@ impl eframe::App for App {
                     self.input_string.clear();
                 }
 
-                text_edit.response.request_focus();
+                let status = *self.status.lock().unwrap();
 
-                if ui.button("Reset").clicked() && *self.status.lock().unwrap() == Status::Standby {
-                    debug!("Requested reset by user!");
+                if status != Status::PasswordReq {
+                    text_edit.response.request_focus();
+                }
+
+                if ui.button("Reset").clicked() && status == Status::Standby {
+                    info!("Reset requested by user!");
                     request_clear = true;
+                }
+
+                if !self.config.password.is_empty() {
+                    if ui.button("PASS").clicked() && status == Status::Standby {
+                        warn!("Passthrough Requested by user!");
+                        *self.status.lock().unwrap() = Status::PasswordReq;
+                    }
                 }
             });
         });
@@ -430,6 +580,31 @@ impl eframe::App for App {
                         ui.label(self.status_msg.lock().unwrap().as_str());
                     });
                 }
+                Status::PasswordReq => {
+                    ui.add_space(100.0);
+                    ui.vertical_centered(|ui| {
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut self.input_password).password(true),
+                        );
+
+                        if ui.button("X").clicked() {
+                            *self.status.lock().unwrap() = Status::Standby;
+                        }
+
+                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            if self.input_password == self.config.password {
+                                warn!("Password input is correct. Sending enable!");
+                                self.send_enable(ctx.clone());
+                            } else {
+                                info!("Password input is incorrect.")
+                            }
+
+                            self.input_password.clear();
+                        }
+
+                        response.request_focus();
+                    });
+                }
                 status => {
                     if let Some(p) = &self.product {
                         ui.heading(&p.name);
@@ -438,9 +613,7 @@ impl eframe::App for App {
 
                         let mut all_ok = true;
 
-                        let serial_lock = self.serials.lock().unwrap();
-
-                        for serial in serial_lock.iter() {
+                        for serial in self.serials.lock().unwrap().iter() {
                             serial.frame(ui);
                             if serial.nok() {
                                 all_ok = false;
@@ -478,8 +651,10 @@ impl eframe::App for App {
                             ui.vertical_centered(|ui| {
                                 ui.add(egui::Spinner::new().size(100.0));
                             });
-                        } else if serial_lock.len() >= p.boards_per_frame as usize
-                            && !serial_lock.iter().any(|f| f.nok())
+                        } else if (self.serials.lock().unwrap().len()
+                            >= p.boards_per_frame as usize
+                            && !self.serials.lock().unwrap().iter().any(|f| f.nok()))
+                            || status == Status::SendingEnable
                         {
                             if status == Status::Standby {
                                 self.send_enable(ctx.clone());

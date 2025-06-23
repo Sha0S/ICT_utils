@@ -1,4 +1,5 @@
 /target
+/log
 products
 golden_samples
 config.ini
@@ -6,3 +7,4 @@ copy.bat
 upload_fct_folder.bat
 users
 last_date.txt
+ccl_config.json

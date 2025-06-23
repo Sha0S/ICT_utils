@@ -13,6 +13,9 @@ pub struct Config {
 
     pub serial_port: String,
 
+    #[serde(default)]
+    pub password: String,
+
     // Products
     pub product_list: Vec<Product>
 }
@@ -21,7 +24,10 @@ pub struct Config {
 pub struct Product {
     pub name: String,
     pub serial_ids: Vec<String>,
-    pub uses_fct: bool,
+
+    #[serde(default)]
+    pub uses_fct: bool, // default is false
+
     pub boards_per_frame: u8,
 }
 
