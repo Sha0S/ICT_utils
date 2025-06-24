@@ -3,6 +3,7 @@
 
 /*
 TODO:
+- automatically clear after x time (~1min?)?
 - check for gs - main DMC works, could check for others
 */
 
@@ -536,13 +537,13 @@ impl eframe::App for App {
                     text_edit.response.request_focus();
                 }
 
-                if ui.button("Reset").clicked() && status == Status::Standby {
+                if ui.button(" Reset ⟳ ").clicked() && status == Status::Standby {
                     info!("Reset requested by user!");
                     request_clear = true;
                 }
 
                 if !self.config.password.is_empty() {
-                    if ui.button("PASS").clicked() && status == Status::Standby {
+                    if ui.button(" PASS =>> ").clicked() && status == Status::Standby {
                         warn!("Passthrough Requested by user!");
                         *self.status.lock().unwrap() = Status::PasswordReq;
                     }
@@ -607,9 +608,22 @@ impl eframe::App for App {
                 }
                 status => {
                     if let Some(p) = &self.product {
-                        ui.heading(&p.name);
-
-                        ui.add_space(30.0);
+                        ui.horizontal(|ui: &mut egui::Ui| {
+                            ui.add_sized(
+                                (300.0, 50.0),
+                                egui::Label::new(RichText::new(&p.name).size(30.0)),
+                            );
+                            ui.add_space(10.0);
+                            ui.add_sized(
+                                (110.0, 50.0),
+                                egui::Label::new(RichText::new("ICT").size(36.0)),
+                            );
+                            ui.add_space(10.0);
+                            ui.add_sized(
+                                (110.0, 50.0),
+                                egui::Label::new(RichText::new("FCT").size(36.0)),
+                            );
+                        });
 
                         let mut all_ok = true;
 
@@ -707,6 +721,6 @@ impl eframe::App for App {
             self.queue.clear();
         }
 
-        ctx.request_repaint_after_secs(0.5);
+        ctx.request_repaint_after_secs(1.0);
     }
 }
