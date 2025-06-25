@@ -9,6 +9,7 @@ edition = "2021"
 chrono = "0"
 eframe = "0"
 egui = "0"
+image = "0"
 tiberius = { version = "0", default-features = false, features = ["rustls", "chrono", "tds73", "winauth", "sql-browser-tokio"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0", features = ["compat"] }

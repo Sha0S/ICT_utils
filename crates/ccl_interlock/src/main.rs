@@ -30,6 +30,24 @@ macro_rules! error_and_bail {
     };
 }
 
+fn load_icon() -> egui::IconData {
+    let (icon_rgba, icon_width, icon_height) = {
+        let icon = include_bytes!("..\\..\\..\\icons\\ccl_int.png");
+        let image = image::load_from_memory(icon)
+            .expect("Failed to open icon path")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
+    };
+
+    egui::IconData {
+        rgba: icon_rgba,
+        width: icon_width,
+        height: icon_height,
+    }
+}
+
 fn setup_logger() -> Result<(), fern::InitError> {
     let date = chrono::Local::now().date_naive().format("%F");
     let log_name = format!("./log/{}_ccl_interlock.log", date);
@@ -60,7 +78,8 @@ async fn main() -> anyhow::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size(egui::Vec2 { x: 600.0, y: 600.0 }),
+            .with_inner_size(egui::Vec2 { x: 600.0, y: 600.0 })
+            .with_icon(load_icon()),
         ..Default::default()
     };
 
