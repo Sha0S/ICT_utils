@@ -38,12 +38,14 @@ fn main() {
         panic!("File {} does not exist!", log_path.to_string_lossy());
     }
 
-    let log = LogFile::load(&log_path).expect("Failed to load logfile!");
-    let x = if log.has_report() { 1000.0 } else { 660.0 };
+    let logs = LogFile::load_panel(&log_path).expect("Failed to load logfile!");
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size(egui::Vec2 { x, y: 500.0 })
+            .with_inner_size(egui::Vec2 {
+                x: 1000.0,
+                y: 500.0,
+            })
             .with_icon(load_icon()),
         ..Default::default()
     };
@@ -51,29 +53,31 @@ fn main() {
     _ = eframe::run_native(
         &format!("ICT Log Reader (v{VERSION})"),
         options,
-        Box::new(|_| Ok(Box::new(IctLogReader::default(log)))),
+        Box::new(|_| Ok(Box::new(IctLogReader::default(logs)))),
     );
 }
 
 struct IctLogReader {
     failed_only: bool,
     search: String,
-    log: LogFile,
+    selected_log: usize,
+    logs: Vec<LogFile>,
 }
 
 impl IctLogReader {
-    fn default(log: LogFile) -> Self {
+    fn default(logs: Vec<LogFile>) -> Self {
         IctLogReader {
-            failed_only: log.get_status() != 0,
+            failed_only: logs[0].get_status() != 0,
             search: String::new(),
-            log,
+            selected_log: 0,
+            logs,
         }
     }
 }
 
 impl eframe::App for IctLogReader {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.log.has_report() {
+        if self.logs[self.selected_log].has_report() {
             egui::SidePanel::right("Report")
                 .default_width(300.0)
                 .resizable(true)
@@ -82,8 +86,10 @@ impl eframe::App for IctLogReader {
                         .auto_shrink(false)
                         .show(ui, |ui| {
                             ui.add(
-                                egui::TextEdit::multiline(&mut self.log.get_report())
-                                    .desired_width(f32::INFINITY),
+                                egui::TextEdit::multiline(
+                                    &mut self.logs[self.selected_log].get_report(),
+                                )
+                                .desired_width(f32::INFINITY),
                             );
                         });
                 });
@@ -92,34 +98,57 @@ impl eframe::App for IctLogReader {
         egui::TopBottomPanel::top("Board Data").show(ctx, |ui| {
             egui::Grid::new("board_stats").show(ui, |ui| {
                 ui.monospace("Fájl:");
-                ui.monospace(format!("{}", self.log.get_source().to_string_lossy()));
+                ui.monospace(format!(
+                    "{}",
+                    self.logs[self.selected_log].get_source().to_string_lossy()
+                ));
                 ui.end_row();
 
                 ui.monospace("Termék:");
-                ui.monospace(self.log.get_product_id());
-                ui.end_row();
-
-                ui.monospace("DMC:");
-                ui.monospace(self.log.get_DMC());
+                ui.monospace(self.logs[self.selected_log].get_product_id());
                 ui.end_row();
 
                 ui.monospace("Fő DMC:");
-                ui.monospace(self.log.get_main_DMC());
+                ui.monospace(self.logs[self.selected_log].get_main_DMC());
+                ui.end_row();
+
+                ui.monospace("DMC:");
+                egui::ComboBox::from_id_salt("select_log")
+                    .width(300.0)
+                    .selected_text(format!(
+                        "{} - {}",
+                        self.selected_log,
+                        self.logs[self.selected_log].get_DMC()
+                    ))
+                    .show_ui(ui, |ui| {
+                        for (i, log) in self.logs.iter().enumerate() {
+                            ui.selectable_value(
+                                &mut self.selected_log,
+                                i,
+                                format!("{} - {}", i, log.get_DMC()),
+                            );
+                        }
+                    });
+
                 ui.end_row();
 
                 ui.monospace("Teszt ideje:");
                 ui.monospace(format!(
                     "{} - {}",
-                    self.log.get_time_start().format("%Y-%m-%d %H:%M:%S"),
-                    self.log.get_time_end().format("%Y-%m-%d %H:%M:%S")
+                    self.logs[self.selected_log]
+                        .get_time_start()
+                        .format("%Y-%m-%d %H:%M:%S"),
+                    self.logs[self.selected_log]
+                        .get_time_end()
+                        .format("%Y-%m-%d %H:%M:%S")
                 ));
                 ui.end_row();
 
                 ui.monospace("Eredmény:");
                 ui.monospace(format!(
                     "{} - {}",
-                    self.log.get_status(),
-                    self.log.get_status_str()
+                    self.logs[self.selected_log].get_status(),
+                    self.logs[self.selected_log].get_status_str()
                 ));
                 ui.end_row();
             });
@@ -161,8 +190,7 @@ impl eframe::App for IctLogReader {
                     });
                 })
                 .body(|body| {
-                    let selected_tests: Vec<&Test> = self
-                        .log
+                    let selected_tests: Vec<&Test> = self.logs[self.selected_log]
                         .get_tests()
                         .iter()
                         .filter(|f| {
