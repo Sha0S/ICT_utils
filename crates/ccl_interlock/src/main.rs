@@ -131,6 +131,7 @@ struct Serial {
     gs: bool,
     ict: TestResult,
     fct: TestResult,
+    ccl: i32,
 }
 
 impl Serial {
@@ -159,10 +160,31 @@ impl Serial {
                 self.fct.frame(ui);
             }
         });
+
+        if self.ccl >= 2 {
+            ui.vertical_centered_justified(|ui| {
+                egui::Frame::new()
+                    .fill(Color32::RED)
+                    .corner_radius(5)
+                    .inner_margin(5)
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(
+                                "A termék mindkét oldala lakkozva van!
+                                    Both sides of the product are coated.
+                                    Обидві сторони виробу покриті.
+                                    Ang magkabilang panig ng produkto ay pinahiran.",
+                            )
+                            .color(Color32::BLACK)
+                            .size(14.0),
+                        );
+                    });
+            });
+        }
     }
 
     fn ok(&self) -> bool {
-        !self.gs && self.ict.ok() && self.fct.ok()
+        !self.gs && self.ict.ok() && self.fct.ok() && self.ccl < 2
     }
 
     fn nok(&self) -> bool {
@@ -470,6 +492,10 @@ impl App {
                     WHERE Serial_NMBR = @P1
                     ORDER BY Date_Time DESC;
 
+                    SELECT COUNT(*)
+                    FROM dbo.AOI_RESULTS
+                    WHERE Barcode = @P1;
+
                     SELECT TOP(1) Result
                     FROM dbo.SMT_FCT_Test
                     WHERE Serial_NMBR = @P1
@@ -480,12 +506,17 @@ impl App {
                     "SELECT TOP(1) Result
                     FROM dbo.SMT_Test
                     WHERE Serial_NMBR = @P1
-                    ORDER BY Date_Time DESC;",
+                    ORDER BY Date_Time DESC;
+                    
+                    SELECT COUNT(*)
+                    FROM dbo.AOI_RESULTS
+                    WHERE Barcode = @P1;",
                 )
             };
             query.bind(&serial);
 
             let mut ict_result = TestResult::None;
+            let mut ccl_counter = 0;
             let mut fct_result = if product.uses_fct {
                 TestResult::None
             } else {
@@ -499,6 +530,15 @@ impl App {
                             ict_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
                         }
                         tiberius::QueryItem::Row(x) if x.result_index() == 1 => {
+                            println!("{:?}", x);
+                            if let Ok(tc) = x.try_get::<i32, usize>(0) {
+                                if let Some(c) = tc {
+                                    info!("ccl_counter_str: {c}");
+                                    ccl_counter = c;
+                                }
+                            }
+                        }
+                        tiberius::QueryItem::Row(x) if x.result_index() == 2 => {
                             fct_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
                         }
                         _ => {}
@@ -508,6 +548,8 @@ impl App {
                 error!("SQL error!");
                 *err_message.lock().unwrap() = String::from("SQL hiba!\nSQL error!");
             }
+
+            info!("CCL counter: {}", ccl_counter);
 
             let gs = golden_samples.lock().unwrap().contains(&serial);
 
@@ -524,6 +566,7 @@ impl App {
                 gs,
                 ict: ict_result,
                 fct: fct_result,
+                ccl: ccl_counter,
             });
 
             *status.lock().unwrap() = Status::Standby;

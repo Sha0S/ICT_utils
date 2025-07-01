@@ -134,7 +134,7 @@ fn get_logs_for_timeframe(
                         }
                     }
                 }
-            } else if path.is_dir() { // we can check one dir deeper (DCDC FCT compatibility)
+            } else if path.is_dir() && product.get_tester_type() == TesterType::FctDcdc { // we can check one dir deeper (DCDC FCT compatibility)
                 for file2 in fs::read_dir(path)? {
                     let file2 = file2?;
                     let path2 = file2.path();
