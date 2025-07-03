@@ -219,33 +219,36 @@ impl SpiStation {
                 GROUP BY Station, Program",
             );
 
-            if let Ok(mut result) = query.query(client).await {
-                while let Some(row) = result.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            // Station, Program, Variant
-                            let station = x.get::<&str, usize>(0).unwrap().to_owned();
-                            let program = x.get::<&str, usize>(1).unwrap().to_owned();
+            match query.query(client).await {
+                Ok(mut result) => {
+                    while let Some(row) = result.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                // Station, Program, Variant
+                                let station = x.get::<&str, usize>(0).unwrap().to_owned();
+                                let program = x.get::<&str, usize>(1).unwrap().to_owned();
 
-                            debug!("Result: {station} - {program}");
+                                debug!("Result: {station} - {program}");
 
-                            // Populating stations/products/variants structs
-                            stations.lock().unwrap().push(station, program);
+                                // Populating stations/products/variants structs
+                                stations.lock().unwrap().push(station, program);
+                            }
+                            tiberius::QueryItem::Metadata(_) => (),
                         }
-                        tiberius::QueryItem::Metadata(_) => (),
                     }
+
+                    stations.lock().unwrap().sort();
+
+                    info!("Initialization OK!");
+                    *status.lock().unwrap() = Status::Standby;
                 }
-
-                stations.lock().unwrap().sort();
-
-                info!("Initialization OK!");
-                *status.lock().unwrap() = Status::Standby;
-            } else {
-                error!("Initialization FAILED!");
-                *status.lock().unwrap() = Status::Error;
-                *message.lock().unwrap() =
-                    String::from("Inícializáció sikertelen! Ellenőrizze a kapcsolatot!");
+                _ => {
+                    error!("Initialization FAILED!");
+                    *status.lock().unwrap() = Status::Error;
+                    *message.lock().unwrap() =
+                        String::from("Inícializáció sikertelen! Ellenőrizze a kapcsolatot!");
+                }
             }
 
             ctx.request_repaint();
@@ -389,53 +392,57 @@ impl SpiStation {
 
             debug!("Query text: {}", query_text);
 
-            if let Ok(mut result) = client.query(query_text, &[]).await {
-                while let Some(row) = result.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            let barcode = x.get::<&str, usize>(0).unwrap().to_owned();
-                            let date_time = x.get::<NaiveDateTime, usize>(1).unwrap().to_owned();
-                            let station = x.get::<&str, usize>(2).unwrap().to_owned();
-                            let inspection_plan = x.get::<&str, usize>(3).unwrap().to_owned();
-                            let variant = x.get::<&str, usize>(4).unwrap().to_owned();
-                            let result_text = x.get::<&str, usize>(5).unwrap().to_owned();
-                            let data = x.get::<&str, usize>(6).unwrap().to_owned();
+            match client.query(query_text, &[]).await {
+                Ok(mut result) => {
+                    while let Some(row) = result.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                let barcode = x.get::<&str, usize>(0).unwrap().to_owned();
+                                let date_time =
+                                    x.get::<NaiveDateTime, usize>(1).unwrap().to_owned();
+                                let station = x.get::<&str, usize>(2).unwrap().to_owned();
+                                let inspection_plan = x.get::<&str, usize>(3).unwrap().to_owned();
+                                let variant = x.get::<&str, usize>(4).unwrap().to_owned();
+                                let result_text = x.get::<&str, usize>(5).unwrap().to_owned();
+                                let data = x.get::<&str, usize>(6).unwrap().to_owned();
 
-                            // Populating stations/products/variants structs
-                            boards
-                                .lock()
-                                .unwrap()
-                                .push(SPI_log_file::helpers::SingleBoard {
-                                    barcode,
-                                    result: result_text == "Pass",
-                                    inspection_plan,
-                                    variant,
-                                    station,
-                                    date_time,
-                                    failed_board_data: serde_json::from_str(&data).unwrap(),
-                                });
+                                // Populating stations/products/variants structs
+                                boards
+                                    .lock()
+                                    .unwrap()
+                                    .push(SPI_log_file::helpers::SingleBoard {
+                                        barcode,
+                                        result: result_text == "Pass",
+                                        inspection_plan,
+                                        variant,
+                                        station,
+                                        date_time,
+                                        failed_board_data: serde_json::from_str(&data).unwrap(),
+                                    });
+                            }
+                            tiberius::QueryItem::Metadata(_) => (),
                         }
-                        tiberius::QueryItem::Metadata(_) => (),
                     }
+
+                    let boards_len = boards.lock().unwrap().len();
+                    info!("Query OK!");
+                    *message.lock().unwrap() =
+                        format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
+
+                    info! {"Lekérdezés sikeres! {boards_len} eredmény feldolgozása..."};
+                    let mut counter =
+                        SPI_log_file::helpers::FailedCompCounter::generate(&boards.lock().unwrap());
+                    counter.sort();
+                    *failure_counter.lock().unwrap() = Some(counter);
+
+                    *status.lock().unwrap() = Status::Standby;
                 }
-
-                let boards_len = boards.lock().unwrap().len();
-                info!("Query OK!");
-                *message.lock().unwrap() =
-                    format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
-
-                info! {"Lekérdezés sikeres! {boards_len} eredmény feldolgozása..."};
-                let mut counter =
-                    SPI_log_file::helpers::FailedCompCounter::generate(&boards.lock().unwrap());
-                counter.sort();
-                *failure_counter.lock().unwrap() = Some(counter);
-
-                *status.lock().unwrap() = Status::Standby;
-            } else {
-                error!("Query FAILED!");
-                *status.lock().unwrap() = Status::Error;
-                *message.lock().unwrap() = String::from("Lekérdezés sikertelen! SQL hiba!");
+                _ => {
+                    error!("Query FAILED!");
+                    *status.lock().unwrap() = Status::Error;
+                    *message.lock().unwrap() = String::from("Lekérdezés sikertelen! SQL hiba!");
+                }
             }
 
             ctx.request_repaint();
@@ -518,7 +525,7 @@ impl SpiStation {
             return;
         }
 
-        if let Some( failures) = self.failure_counter.lock().unwrap().as_mut() {
+        if let Some(failures) = self.failure_counter.lock().unwrap().as_mut() {
             TableBuilder::new(ui)
                 .id_salt("SpiErrTable")
                 .striped(true)
@@ -594,7 +601,9 @@ impl SpiStation {
                                                         ui.label(&feature.name);
                                                     });
                                                     row.col(|ui| {
-                                                        ui.label(&feature.count_pseudo_nok.to_string());
+                                                        ui.label(
+                                                            &feature.count_pseudo_nok.to_string(),
+                                                        );
                                                     });
                                                     row.col(|ui| {
                                                         ui.label(&feature.count_nok.to_string());

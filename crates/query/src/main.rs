@@ -540,20 +540,23 @@ impl IctResultApp {
             query.bind(&DMC);
 
             let mut logname: String = String::new();
-            if let Ok(result) = query.query(&mut c).await {
-                if let Some(row) = result.into_row().await.unwrap() {
-                    logname = row.get::<&str, usize>(0).unwrap().to_string();
-                } else {
-                    // No result found for the DMC
-                    *error_clone.lock().unwrap() =
-                        Some(format!("Nem található eredmény a DMC-re: {}", DMC));
+            match query.query(&mut c).await {
+                Ok(result) => {
+                    if let Some(row) = result.into_row().await.unwrap() {
+                        logname = row.get::<&str, usize>(0).unwrap().to_string();
+                    } else {
+                        // No result found for the DMC
+                        *error_clone.lock().unwrap() =
+                            Some(format!("Nem található eredmény a DMC-re: {}", DMC));
+                    }
                 }
-            } else {
-                // SQL error
-                *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
-                *loading_lock.lock().unwrap() = false;
-                context.request_repaint();
-                return;
+                _ => {
+                    // SQL error
+                    *error_clone.lock().unwrap() = Some("SQL hiba lekérdezés közben!".to_string());
+                    *loading_lock.lock().unwrap() = false;
+                    context.request_repaint();
+                    return;
+                }
             }
 
             panel_lock.lock().unwrap().set_selected(&DMC);
@@ -593,39 +596,42 @@ impl IctResultApp {
             );
 
             debug!("Query: {qtext}");
-            if let Ok(mut result) = c.query(qtext, &[]).await {
-                while let Some(row) = result.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            // [Serial_NMBR],[Station],[Result],[Date_Time],[Log_File_Name],[Notes]
-                            let serial = x.get::<&str, usize>(0).unwrap().to_owned();
-                            let station = x.get::<&str, usize>(1).unwrap().to_owned();
-                            let result = x.get::<&str, usize>(2).unwrap().to_owned();
-                            let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
-                            let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
-                            let note = x.get::<&str, usize>(5).unwrap_or_default().to_owned(); // Notes can be NULL!
+            match c.query(qtext, &[]).await {
+                Ok(mut result) => {
+                    while let Some(row) = result.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                // [Serial_NMBR],[Station],[Result],[Date_Time],[Log_File_Name],[Notes]
+                                let serial = x.get::<&str, usize>(0).unwrap().to_owned();
+                                let station = x.get::<&str, usize>(1).unwrap().to_owned();
+                                let result = x.get::<&str, usize>(2).unwrap().to_owned();
+                                let date_time = x.get::<NaiveDateTime, usize>(3).unwrap();
+                                let log_file_name = x.get::<&str, usize>(4).unwrap().to_owned();
+                                let note = x.get::<&str, usize>(5).unwrap_or_default().to_owned(); // Notes can be NULL!
 
-                            panel_lock.lock().unwrap().push(
-                                serial,
-                                station,
-                                StationType::Ict,
-                                result == "Passed",
-                                date_time,
-                                log_file_name,
-                                note,
-                            );
+                                panel_lock.lock().unwrap().push(
+                                    serial,
+                                    station,
+                                    StationType::Ict,
+                                    result == "Passed",
+                                    date_time,
+                                    log_file_name,
+                                    note,
+                                );
+                            }
+                            tiberius::QueryItem::Metadata(_) => (),
                         }
-                        tiberius::QueryItem::Metadata(_) => (),
                     }
                 }
-            } else {
-                // SQL error
-                *error_clone.lock().unwrap() =
-                    Some("SQL hiba lekérdezés közben! (ICT)".to_string());
-                *loading_lock.lock().unwrap() = false;
-                context.request_repaint();
-                return;
+                _ => {
+                    // SQL error
+                    *error_clone.lock().unwrap() =
+                        Some("SQL hiba lekérdezés közben! (ICT)".to_string());
+                    *loading_lock.lock().unwrap() = false;
+                    context.request_repaint();
+                    return;
+                }
             }
 
             // 4 - Query the serials for CCL results
@@ -638,51 +644,55 @@ impl IctResultApp {
             );
 
             debug!("Query: {qtext}");
-            if let Ok(mut result) = c.query(qtext, &[]).await {
-                while let Some(row) = result.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            //  Barcode, Result, Side, Line, Operator, RowUpdated
-                            let serial = x.get::<&str, usize>(0).unwrap().to_owned();
-                            let result = x.get::<&str, usize>(1).unwrap().to_owned();
-                            let side = x.get::<&str, usize>(2).unwrap().to_owned();
-                            let station = x.get::<&str, usize>(3).unwrap().to_owned();
-                            let operator = x.get::<&str, usize>(4).unwrap_or_default().to_owned();
-                            let date_time = x.get::<NaiveDateTime, usize>(5).unwrap();
+            match c.query(qtext, &[]).await {
+                Ok(mut result) => {
+                    while let Some(row) = result.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                //  Barcode, Result, Side, Line, Operator, RowUpdated
+                                let serial = x.get::<&str, usize>(0).unwrap().to_owned();
+                                let result = x.get::<&str, usize>(1).unwrap().to_owned();
+                                let side = x.get::<&str, usize>(2).unwrap().to_owned();
+                                let station = x.get::<&str, usize>(3).unwrap().to_owned();
+                                let operator =
+                                    x.get::<&str, usize>(4).unwrap_or_default().to_owned();
+                                let date_time = x.get::<NaiveDateTime, usize>(5).unwrap();
 
-                            let station_str = if station == "-" {
-                                format!("CCL FW {}", side)
-                            } else {
-                                format!("CCL {} {}", station, side)
-                            };
-
-                            panel_lock.lock().unwrap().push(
-                                serial,
-                                station_str,
-                                StationType::Ccl(if side == "BOT" {
-                                    BotTop::Bot
+                                let station_str = if station == "-" {
+                                    format!("CCL FW {}", side)
                                 } else {
-                                    BotTop::Top
-                                }),
-                                result == "PASS",
-                                date_time,
-                                "".to_string(),
-                                format!("Operator: {operator}"),
-                            );
+                                    format!("CCL {} {}", station, side)
+                                };
+
+                                panel_lock.lock().unwrap().push(
+                                    serial,
+                                    station_str,
+                                    StationType::Ccl(if side == "BOT" {
+                                        BotTop::Bot
+                                    } else {
+                                        BotTop::Top
+                                    }),
+                                    result == "PASS",
+                                    date_time,
+                                    "".to_string(),
+                                    format!("Operator: {operator}"),
+                                );
+                            }
+                            tiberius::QueryItem::Metadata(_) => (),
                         }
-                        tiberius::QueryItem::Metadata(_) => (),
                     }
                 }
-            } else {
-                // SQL error
-                *error_clone.lock().unwrap() =
-                    Some("SQL hiba lekérdezés közben! (CCL)".to_string());
+                _ => {
+                    // SQL error
+                    *error_clone.lock().unwrap() =
+                        Some("SQL hiba lekérdezés közben! (CCL)".to_string());
 
-                panel_lock.lock().unwrap().sort();
-                *loading_lock.lock().unwrap() = false;
-                context.request_repaint();
-                return;
+                    panel_lock.lock().unwrap().sort();
+                    *loading_lock.lock().unwrap() = false;
+                    context.request_repaint();
+                    return;
+                }
             }
 
             // 5 - Query for FCT results
@@ -756,8 +766,6 @@ impl IctResultApp {
                                 let line_number = &station[station.len() - 2..];
 
                                 let station = format!("{sub_station} - L{line_number} - {side}");
-
-                                
 
                                 panel_lock.lock().unwrap().push(
                                     serial,

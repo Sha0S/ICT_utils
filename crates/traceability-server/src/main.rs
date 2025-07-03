@@ -36,7 +36,9 @@ enum AppMode {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
     }
 
     env_logger::init();
@@ -340,7 +342,7 @@ impl MyLoginWindow {
                 text: "Pass".to_owned(),
                 position: (20, 50),
                 width: 260,
-                edit_style: ES::PASSWORD,
+                control_style: ES::PASSWORD,
                 ..Default::default()
             },
         );
@@ -369,10 +371,9 @@ impl MyLoginWindow {
     pub fn run(&self) -> AnyResult<User> {
         self.wnd.run_main(None)?; // simply let the window manager do the hard work
 
-        if let Some(i) = *self.selected.lock().unwrap() {
-            Ok(self.users[i].clone())
-        } else {
-            AnyResult::Err("Failed login".into())
+        match *self.selected.lock().unwrap() {
+            Some(i) => Ok(self.users[i].clone()),
+            _ => AnyResult::Err("Failed login".into()),
         }
     }
 
@@ -382,7 +383,9 @@ impl MyLoginWindow {
         self2.btn_login.on().bn_clicked(move || {
             // button click event
             for (i, user) in self2.users.iter().enumerate() {
-                if user.name == self2.edit_name.text() && user.check_pw(&self2.edit_pass.text()) {
+                if user.name == self2.edit_name.text().unwrap()
+                    && user.check_pw(&self2.edit_pass.text().unwrap())
+                {
                     *sel_2.lock().unwrap() = Some(i);
                     self2.wnd.hwnd().DestroyWindow()?;
                     break;
@@ -481,7 +484,7 @@ impl StringInputWindow {
     fn events(&mut self) {
         let self2 = self.clone();
         self2.btn_ok.on().bn_clicked(move || {
-            *self2.ret_text.lock().unwrap() = self2.edit.text();
+            *self2.ret_text.lock().unwrap() = self2.edit.text().unwrap();
             self2.wnd.hwnd().DestroyWindow()?;
             Ok(())
         });

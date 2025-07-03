@@ -184,7 +184,6 @@ impl Product {
             }
         }
 
-
         true
     }
 }

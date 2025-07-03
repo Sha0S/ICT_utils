@@ -1,7 +1,6 @@
-use std::path::Path;
 use log::debug;
 use serde::Deserialize;
-
+use std::path::Path;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -17,7 +16,7 @@ pub struct Config {
     pub password: String,
 
     // Products
-    pub product_list: Vec<Product>
+    pub product_list: Vec<Product>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -40,7 +39,6 @@ impl Config {
     }
 
     pub fn get_product(&self, serial: &str) -> Option<Product> {
-
         for product in &self.product_list {
             if product.check_serial(serial) {
                 return Some(product.clone());

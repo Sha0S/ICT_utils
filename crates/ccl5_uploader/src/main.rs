@@ -26,7 +26,9 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[tokio::main]
 async fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
     }
 
     env_logger::init();
@@ -91,10 +93,13 @@ async fn main() -> Result<()> {
                     // 2 - process_logs
                     let mut processed_logs = Vec::new();
                     for log in chunk {
-                        if let Ok(plog) = CCL5_log_file::Board::load(log) {
-                            processed_logs.push(plog);
-                        } else {
-                            error!("Failed to process log: {:?}", log);
+                        match CCL5_log_file::Board::load(log) {
+                            Ok(plog) => {
+                                processed_logs.push(plog);
+                            }
+                            _ => {
+                                error!("Failed to process log: {:?}", log);
+                            }
                         }
                     }
 

@@ -134,7 +134,8 @@ fn get_logs_for_timeframe(
                         }
                     }
                 }
-            } else if path.is_dir() && product.get_tester_type() == TesterType::FctDcdc { // we can check one dir deeper (DCDC FCT compatibility)
+            } else if path.is_dir() && product.get_tester_type() == TesterType::FctDcdc {
+                // we can check one dir deeper (DCDC FCT compatibility)
                 for file2 in fs::read_dir(path)? {
                     let file2 = file2?;
                     let path2 = file2.path();
@@ -1052,7 +1053,7 @@ impl eframe::App for MyApp {
                                         fill: Color32::RED,
                                     });
                                 }
-                                let chart = BarChart::new(bars);
+                                let chart = BarChart::new("by index", bars);
 
                                 Plot::new("failure by index")
                                     .show_x(false)
@@ -1178,7 +1179,7 @@ impl eframe::App for MyApp {
                             ));
                         });
                     }
-                    
+
                     // Insert plot here
 
                     let ppoints: PlotPoints = self
@@ -1199,8 +1200,6 @@ impl eframe::App for MyApp {
                             } else {
                                 None
                             }
-
-                            
                         })
                         .collect();
 
@@ -1269,16 +1268,16 @@ impl eframe::App for MyApp {
                         })
                         .collect();
 
-                    let points = egui_plot::Points::new(ppoints)
+                    let points = egui_plot::Points::new("results", ppoints)
                         .highlight(true)
                         .color(Color32::BLUE)
                         .name(testlist[self.selected_test].0.to_owned());
 
-                    let upper_limit = Line::new(upper_limit_p).color(Color32::RED).name("MAX");
+                    let upper_limit = Line::new("UL", upper_limit_p).color(Color32::RED).name("MAX");
 
-                    let nominal = Line::new(nominal_p).color(Color32::GREEN).name("Nom");
+                    let nominal = Line::new( "Nominal", nominal_p).color(Color32::GREEN).name("Nom");
 
-                    let lower_limit = Line::new(lower_limit_p).color(Color32::RED).name("MIN");
+                    let lower_limit = Line::new("LL", lower_limit_p).color(Color32::RED).name("MIN");
 
                     let mut plot = Plot::new("Test results")
                         .custom_x_axes(vec![egui_plot::AxisHints::new_x().formatter(x_formatter)])

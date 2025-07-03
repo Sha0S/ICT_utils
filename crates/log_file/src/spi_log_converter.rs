@@ -1,5 +1,5 @@
-use std::path::Path;
 use log::info;
+use std::path::Path;
 
 use crate::{BResult, LogFile, TLimit, TType, Test};
 
@@ -22,12 +22,16 @@ impl LogFile {
                         // solderbridge has for example no "value", make a dummy test for it
                         if feature.values.is_empty() {
                             tests.push(Test {
-                                    name: format!("{}.{} - {}", comp.name, pad.name, feature.name),
-                                    ttype: TType::Unknown,
-                                    msg: String::new(),
-                                    result: if feature.inspection_failed {(BResult::Fail, 1.0)} else {(BResult::Pass, 0.0)},
-                                    limits: TLimit::None
-                                });
+                                name: format!("{}.{} - {}", comp.name, pad.name, feature.name),
+                                ttype: TType::Unknown,
+                                msg: String::new(),
+                                result: if feature.inspection_failed {
+                                    (BResult::Fail, 1.0)
+                                } else {
+                                    (BResult::Pass, 0.0)
+                                },
+                                limits: TLimit::None,
+                            });
                         }
 
                         for value in feature.values {
@@ -36,7 +40,14 @@ impl LogFile {
                                     name: format!("{}.{} - {}", comp.name, pad.name, value.name),
                                     ttype: TType::Unknown,
                                     msg: String::new(),
-                                    result: ( if feature.inspection_failed {BResult::Fail} else {BResult::Pass}, value.value),
+                                    result: (
+                                        if feature.inspection_failed {
+                                            BResult::Fail
+                                        } else {
+                                            BResult::Pass
+                                        },
+                                        value.value,
+                                    ),
                                     limits: TLimit::Lim2(th.1 as f32, th.0 as f32),
                                 });
                             }

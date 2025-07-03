@@ -18,7 +18,11 @@ impl SQL {
         config.authentication(tiberius::AuthMethod::sql_server(user, pass));
         config.trust_cert();
 
-        Ok(SQL { db: db.to_string(), config, client: None})
+        Ok(SQL {
+            db: db.to_string(),
+            config,
+            client: None,
+        })
     }
 
     pub async fn check_connection(&mut self) -> bool {
@@ -40,7 +44,6 @@ impl SQL {
     }
 
     pub async fn create_connection(&mut self) -> Result<()> {
-
         let mut res = self.connect().await;
 
         let mut tries = 0;
@@ -50,7 +53,7 @@ impl SQL {
         }
 
         res?;
-        
+
         let mut client = self.client.as_mut().unwrap();
 
         // USE [DB]

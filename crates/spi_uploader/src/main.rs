@@ -19,7 +19,9 @@ use tray_item::{IconSource, TrayItem};
 #[tokio::main]
 async fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
     }
 
     env_logger::init();
@@ -92,102 +94,114 @@ async fn main() -> Result<()> {
             let mut skipped_logs = 0;
 
             // 1 - get date_time of the last update
-            if let Ok(last_date) = ICT_config::get_last_date() {
-                let last_date = last_date - tminus;
+            match ICT_config::get_last_date() {
+                Ok(last_date) => {
+                    let last_date = last_date - tminus;
 
-                // 2 - get possible directories
-                //let target_dirs = get_subdirs_for_aoi(&log_dir, &last_date);
-                let target_dirs = vec![log_dir.clone()];
+                    // 2 - get possible directories
+                    //let target_dirs = get_subdirs_for_aoi(&log_dir, &last_date);
+                    let target_dirs = vec![log_dir.clone()];
 
-                // 3 - get logs
-                if let Ok(logs) = get_logs(target_dirs, last_date) {
-                    let new_log_buffer: HashSet<PathBuf> = HashSet::from_iter(logs.iter().cloned());
+                    // 3 - get logs
+                    match get_logs(target_dirs, last_date) {
+                        Ok(logs) => {
+                            let new_log_buffer: HashSet<PathBuf> =
+                                HashSet::from_iter(logs.iter().cloned());
 
-                    // 4 - process_logs
+                            // 4 - process_logs
 
-                    let mut processed_logs = Vec::new();
-                    for log in logs {
-                        if log_buffer.contains(&log) {
-                            skipped_logs += 1;
-                            debug!("Buffer already contains log. Skipping!")
-                        } else {
-                            if let Ok(plog) = SPI_log_file::Panel::load(&log, true) {
-                                processed_logs.push(plog);
-                            } else {
-                                error!("Failed to process log: {:?}", log);
+                            let mut processed_logs = Vec::new();
+                            for log in logs {
+                                if log_buffer.contains(&log) {
+                                    skipped_logs += 1;
+                                    debug!("Buffer already contains log. Skipping!")
+                                } else {
+                                    match SPI_log_file::Panel::load(&log, true) {
+                                        Ok(plog) => {
+                                            processed_logs.push(plog);
+                                        }
+                                        _ => {
+                                            error!("Failed to process log: {:?}", log);
+                                        }
+                                    }
+                                }
                             }
-                        }
-                    }
 
-                    let mut all_ok = true;
-                    // uploading in chunks
-                    for chunk in processed_logs.chunks(config.get_aoi_chunks()) {
-                        // 5 - craft the SQL query
+                            let mut all_ok = true;
+                            // uploading in chunks
+                            for chunk in processed_logs.chunks(config.get_aoi_chunks()) {
+                                // 5 - craft the SQL query
 
-                        let mut qtext = String::from(
+                                let mut qtext = String::from(
                             "INSERT INTO [dbo].[SMT_AOI_RESULTS] 
                             ([Serial_NMBR], [Date_Time], [Station], [Program], [Variant], [Operator], [Result], [Data])
                             VALUES",
                         );
 
-                        for panel in chunk {                            
-                            for board in &panel.boards {
-                                let failed_components = board.generate_failed_components_list();
+                                for panel in chunk {
+                                    for board in &panel.boards {
+                                        let failed_components =
+                                            board.generate_failed_components_list();
 
-                                let data = if failed_components.failed_components.len() < 50 {
-                                        serde_json::to_string(&failed_components).unwrap() 
-                                    } else { 
-                                        let striped = failed_components.strip();
-                                        serde_json::to_string(&striped).unwrap()
-                                    };
+                                        let data = if failed_components.failed_components.len() < 50
+                                        {
+                                            serde_json::to_string(&failed_components).unwrap()
+                                        } else {
+                                            let striped = failed_components.strip();
+                                            serde_json::to_string(&striped).unwrap()
+                                        };
 
-                                qtext += &format!(
-                                    "('{}', '{}', '{}', '{}', '{}', '', '{}', '{}'),",
-                                    board.barcode,
-                                    panel.inspection_end,
-                                    config.get_station_name(),
-                                    panel.product,
-                                    panel.variant,
-                                    if board.is_failed { "Fail" } else { "Pass" },
-                                    data
-                                );
+                                        qtext += &format!(
+                                            "('{}', '{}', '{}', '{}', '{}', '', '{}', '{}'),",
+                                            board.barcode,
+                                            panel.inspection_end,
+                                            config.get_station_name(),
+                                            panel.product,
+                                            panel.variant,
+                                            if board.is_failed { "Fail" } else { "Pass" },
+                                            data
+                                        );
+                                    }
+                                }
+                                qtext.pop(); // removes last ','
+
+                                // 6 - execute query
+                                debug!("Upload: {}", qtext);
+                                let query = Query::new(qtext);
+                                let result = query.execute(&mut client).await;
+
+                                debug!("Result: {:?}", result);
+
+                                if let Err(e) = result {
+                                    all_ok = false;
+                                    error!("Upload failed: {e}");
+                                } else {
+                                    debug!("Upload succesfull!");
+                                    let res = result.unwrap();
+                                    new_logs += res.total();
+                                }
+                            }
+
+                            // 7 - update last_date or report the error
+                            if all_ok {
+                                sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
+                                if let Err(e) = ICT_config::set_last_date(start_time) {
+                                    error!("Failed to update last_time! {}", e);
+                                };
+                                log_buffer = new_log_buffer;
+                            } else {
+                                sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
+                                error!("Upload failed - not setting new last_date");
                             }
                         }
-                        qtext.pop(); // removes last ','
-
-                        // 6 - execute query
-                        debug!("Upload: {}", qtext);
-                        let query = Query::new(qtext);
-                        let result = query.execute(&mut client).await;
-
-                        debug!("Result: {:?}", result);
-
-                        if let Err(e) = result {
-                            all_ok = false;
-                            error!("Upload failed: {e}");
-                        } else {
-                            debug!("Upload succesfull!");
-                            let res = result.unwrap();
-                            new_logs += res.total();
+                        _ => {
+                            error!("Failed to gather logs!");
                         }
                     }
-
-                    // 7 - update last_date or report the error
-                    if all_ok {
-                        sql_tx.send(Message::SetIcon(IconCollor::Green)).unwrap();
-                        if let Err(e) = ICT_config::set_last_date(start_time) {
-                            error!("Failed to update last_time! {}", e);
-                        };
-                        log_buffer = new_log_buffer;
-                    } else {
-                        sql_tx.send(Message::SetIcon(IconCollor::Red)).unwrap();
-                        error!("Upload failed - not setting new last_date");
-                    }
-                } else {
-                    error!("Failed to gather logs!");
                 }
-            } else {
-                error!("Failed to read last_date!");
+                _ => {
+                    error!("Failed to read last_date!");
+                }
             }
 
             if new_logs > 0 {

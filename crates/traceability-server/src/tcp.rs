@@ -4,7 +4,10 @@ use anyhow::bail;
 use chrono::NaiveDateTime;
 use log::{debug, error, info, warn};
 use std::{
-    collections::HashSet, fs, io, path::PathBuf, sync::{mpsc::SyncSender, Arc, Mutex}
+    collections::HashSet,
+    fs, io,
+    path::PathBuf,
+    sync::{mpsc::SyncSender, Arc, Mutex},
 };
 use tiberius::{Client, Query};
 use tokio::{io::Interest, net::TcpStream};
@@ -486,17 +489,20 @@ impl TcpServer {
         let mut t_max: NaiveDateTime = NaiveDateTime::default();
         for log in logs {
             debug!("Parsing log: {log}");
-            if let Ok(l) = ICT_log_file::LogFile::load(&PathBuf::from(&log)) {
-                if l.is_ok() {
-                    t_max = t_max.max(l.get_time_end());
-                    ict_logs.push(l);
-                } else {
-                    error!("Could not process log: {log}");
-                    bail!("Could not process log!")
+            match ICT_log_file::LogFile::load(&PathBuf::from(&log)) {
+                Ok(l) => {
+                    if l.is_ok() {
+                        t_max = t_max.max(l.get_time_end());
+                        ict_logs.push(l);
+                    } else {
+                        error!("Could not process log: {log}");
+                        bail!("Could not process log!")
+                    }
                 }
-            } else {
-                error!("Logfile parsing failed!");
-                bail!("Logfile parsing failed!");
+                _ => {
+                    error!("Logfile parsing failed!");
+                    bail!("Logfile parsing failed!");
+                }
             }
         }
 
@@ -856,23 +862,26 @@ impl TcpServer {
         let client = self.client.as_mut().unwrap();
 
         // Query golden samples
-        if let Ok(mut result) = client
+        match client
             .query("SELECT [Serial_NMBR] FROM [dbo].[SMT_ICT_GS]", &[])
             .await
         {
-            self.golden_samples.clear();
-            while let Some(row) = result.next().await {
-                let row = row.unwrap();
-                match row {
-                    tiberius::QueryItem::Row(x) => {
-                        self.golden_samples
-                            .push(x.get::<&str, usize>(0).unwrap().to_owned());
+            Ok(mut result) => {
+                self.golden_samples.clear();
+                while let Some(row) = result.next().await {
+                    let row = row.unwrap();
+                    match row {
+                        tiberius::QueryItem::Row(x) => {
+                            self.golden_samples
+                                .push(x.get::<&str, usize>(0).unwrap().to_owned());
+                        }
+                        tiberius::QueryItem::Metadata(_) => (),
                     }
-                    tiberius::QueryItem::Metadata(_) => (),
                 }
             }
-        } else {
-            bail!("Found no golden samples!");
+            _ => {
+                bail!("Found no golden samples!");
+            }
         }
 
         ICT_config::export_gs_list(&self.golden_samples)?;

@@ -237,33 +237,36 @@ impl AoiStation {
                 GROUP BY Station, Program",
             );
 
-            if let Ok(mut result) = query.query(client).await {
-                while let Some(row) = result.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            // Station, Program, Variant
-                            let station = x.get::<&str, usize>(0).unwrap().to_owned();
-                            let program = x.get::<&str, usize>(1).unwrap().to_owned();
+            match query.query(client).await {
+                Ok(mut result) => {
+                    while let Some(row) = result.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                // Station, Program, Variant
+                                let station = x.get::<&str, usize>(0).unwrap().to_owned();
+                                let program = x.get::<&str, usize>(1).unwrap().to_owned();
 
-                            debug!("Result: {station} - {program}");
+                                debug!("Result: {station} - {program}");
 
-                            // Populating stations/products/variants structs
-                            stations.lock().unwrap().push(station, program);
+                                // Populating stations/products/variants structs
+                                stations.lock().unwrap().push(station, program);
+                            }
+                            tiberius::QueryItem::Metadata(_) => (),
                         }
-                        tiberius::QueryItem::Metadata(_) => (),
                     }
+
+                    stations.lock().unwrap().sort();
+
+                    info!("Initialization OK!");
+                    *status.lock().unwrap() = Status::Standby;
                 }
-
-                stations.lock().unwrap().sort();
-
-                info!("Initialization OK!");
-                *status.lock().unwrap() = Status::Standby;
-            } else {
-                error!("Initialization FAILED!");
-                *status.lock().unwrap() = Status::Error;
-                *message.lock().unwrap() =
-                    String::from("Inícializáció sikertelen! Ellenőrizze a kapcsolatot!");
+                _ => {
+                    error!("Initialization FAILED!");
+                    *status.lock().unwrap() = Status::Error;
+                    *message.lock().unwrap() =
+                        String::from("Inícializáció sikertelen! Ellenőrizze a kapcsolatot!");
+                }
             }
 
             ctx.request_repaint();
@@ -417,64 +420,70 @@ impl AoiStation {
 
             debug!("Query text: {}", query_text);
 
-            if let Ok(mut result) = client.query(query_text, &[]).await {
-                while let Some(row) = result.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            // Serial_NMBR, Date_Time, Station, Program, Variant, Operator, Result, [Data]
-                            let barcode = x.get::<&str, usize>(0).unwrap().to_owned();
-                            let date_time = x.get::<NaiveDateTime, usize>(1).unwrap().to_owned();
-                            let station = x.get::<&str, usize>(2).unwrap().to_owned();
-                            let inspection_plan = x.get::<&str, usize>(3).unwrap().to_owned();
-                            let variant = x.get::<&str, usize>(4).unwrap().to_owned();
-                            let operator = x.get::<&str, usize>(5).unwrap().to_owned();
-                            let result_text = x.get::<&str, usize>(6).unwrap().to_owned();
-                            let data = x.get::<&str, usize>(7).unwrap().to_owned();
+            match client.query(query_text, &[]).await {
+                Ok(mut result) => {
+                    while let Some(row) = result.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                // Serial_NMBR, Date_Time, Station, Program, Variant, Operator, Result, [Data]
+                                let barcode = x.get::<&str, usize>(0).unwrap().to_owned();
+                                let date_time =
+                                    x.get::<NaiveDateTime, usize>(1).unwrap().to_owned();
+                                let station = x.get::<&str, usize>(2).unwrap().to_owned();
+                                let inspection_plan = x.get::<&str, usize>(3).unwrap().to_owned();
+                                let variant = x.get::<&str, usize>(4).unwrap().to_owned();
+                                let operator = x.get::<&str, usize>(5).unwrap().to_owned();
+                                let result_text = x.get::<&str, usize>(6).unwrap().to_owned();
+                                let data = x.get::<&str, usize>(7).unwrap().to_owned();
 
-                            // Populating stations/products/variants structs
-                            boards
-                                .lock()
-                                .unwrap()
-                                .push(AOI_log_file::helpers::SingleBoard {
-                                    barcode,
-                                    result: result_text == "Pass",
-                                    inspection_plan,
-                                    variant,
-                                    station,
-                                    date_time,
-                                    operator,
-                                    windows: serde_json::from_str(&data).unwrap(),
-                                });
+                                // Populating stations/products/variants structs
+                                boards
+                                    .lock()
+                                    .unwrap()
+                                    .push(AOI_log_file::helpers::SingleBoard {
+                                        barcode,
+                                        result: result_text == "Pass",
+                                        inspection_plan,
+                                        variant,
+                                        station,
+                                        date_time,
+                                        operator,
+                                        windows: serde_json::from_str(&data).unwrap(),
+                                    });
+                            }
+                            tiberius::QueryItem::Metadata(_) => (),
                         }
-                        tiberius::QueryItem::Metadata(_) => (),
                     }
+
+                    let boards_len = boards.lock().unwrap().len();
+                    info!("Query OK!");
+                    *message.lock().unwrap() =
+                        format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
+
+                    let mut counter =
+                        AOI_log_file::helpers::PseudoErrC::generate(limit, &boards.lock().unwrap());
+
+                    counter.sort_by_ip_id(None);
+                    *error_counter.lock().unwrap() = Some(counter);
+
+                    let daily = AOI_log_file::helpers::ErrorTrackerT::generate(
+                        limit,
+                        &boards.lock().unwrap(),
+                    );
+                    *error_daily.lock().unwrap() = Some(daily);
+
+                    let elist =
+                        AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
+                    *error_list.lock().unwrap() = Some(elist);
+
+                    *status.lock().unwrap() = Status::Standby;
                 }
-
-                let boards_len = boards.lock().unwrap().len();
-                info!("Query OK!");
-                *message.lock().unwrap() =
-                    format!("Lekérdezés sikeres! {boards_len} eredmény feldolgozása...");
-
-                let mut counter =
-                    AOI_log_file::helpers::PseudoErrC::generate(limit, &boards.lock().unwrap());
-
-                counter.sort_by_ip_id(None);
-                *error_counter.lock().unwrap() = Some(counter);
-
-                let daily =
-                    AOI_log_file::helpers::ErrorTrackerT::generate(limit, &boards.lock().unwrap());
-                *error_daily.lock().unwrap() = Some(daily);
-
-                let elist =
-                    AOI_log_file::helpers::ErrorList::generate(limit, &boards.lock().unwrap());
-                *error_list.lock().unwrap() = Some(elist);
-
-                *status.lock().unwrap() = Status::Standby;
-            } else {
-                error!("Query FAILED!");
-                *status.lock().unwrap() = Status::Error;
-                *message.lock().unwrap() = String::from("Lekérdezés sikertelen! SQL hiba!");
+                _ => {
+                    error!("Query FAILED!");
+                    *status.lock().unwrap() = Status::Error;
+                    *message.lock().unwrap() = String::from("Lekérdezés sikertelen! SQL hiba!");
+                }
             }
 
             ctx.request_repaint();

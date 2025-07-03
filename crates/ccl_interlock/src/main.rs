@@ -332,7 +332,7 @@ impl App {
                 }
             }
 
-            if let Ok(mut qstream) = client
+            match client
                 .lock()
                 .await
                 .client()
@@ -340,24 +340,27 @@ impl App {
                 .query("SELECT Serial_NMBR FROM SMT_ICT_GS", &[])
                 .await
             {
-                while let Some(row) = qstream.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) => {
-                            let serial = x.get::<&str, usize>(0).unwrap();
+                Ok(mut qstream) => {
+                    while let Some(row) = qstream.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) => {
+                                let serial = x.get::<&str, usize>(0).unwrap();
 
-                            for product in &products {
-                                if product.check_serial(serial) {
-                                    golden_samples.lock().unwrap().push(serial.to_string());
-                                    break;
+                                for product in &products {
+                                    if product.check_serial(serial) {
+                                        golden_samples.lock().unwrap().push(serial.to_string());
+                                        break;
+                                    }
                                 }
                             }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
-            } else {
-                error!("Could not load the GS serials from SQL!");
+                _ => {
+                    error!("Could not load the GS serials from SQL!");
+                }
             }
 
             *status.lock().unwrap() = Status::Standby;
@@ -522,34 +525,33 @@ impl App {
             } else {
                 TestResult::NotTested
             };
-            if let Ok(mut qstream) = query.query(&mut sql_client).await {
-                while let Some(row) = qstream.next().await {
-                    let row = row.unwrap();
-                    match row {
-                        tiberius::QueryItem::Row(x) if x.result_index() == 0 => {
-                            ict_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
-                        }
-                        tiberius::QueryItem::Row(x) if x.result_index() == 1 => {
-                            println!("{:?}", x);
-                            if let Ok(tc) = x.try_get::<i32, usize>(0) {
-                                if let Some(c) = tc {
-                                    info!("ccl_counter_str: {c}");
-                                    ccl_counter = c;
+            match query.query(&mut sql_client).await {
+                Ok(mut qstream) => {
+                    while let Some(row) = qstream.next().await {
+                        let row = row.unwrap();
+                        match row {
+                            tiberius::QueryItem::Row(x) if x.result_index() == 0 => {
+                                ict_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
+                            }
+                            tiberius::QueryItem::Row(x) if x.result_index() == 1 => {
+                                if let Ok(tc) = x.try_get::<i32, usize>(0) {
+                                    if let Some(c) = tc {
+                                        ccl_counter = c;
+                                    }
                                 }
                             }
+                            tiberius::QueryItem::Row(x) if x.result_index() == 2 => {
+                                fct_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
+                            }
+                            _ => {}
                         }
-                        tiberius::QueryItem::Row(x) if x.result_index() == 2 => {
-                            fct_result = TestResult::parse(x.get::<&str, usize>(0).unwrap());
-                        }
-                        _ => {}
                     }
                 }
-            } else {
-                error!("SQL error!");
-                *err_message.lock().unwrap() = String::from("SQL hiba!\nSQL error!");
+                _ => {
+                    error!("SQL error!");
+                    *err_message.lock().unwrap() = String::from("SQL hiba!\nSQL error!");
+                }
             }
-
-            info!("CCL counter: {}", ccl_counter);
 
             let gs = golden_samples.lock().unwrap().contains(&serial);
 

@@ -60,7 +60,17 @@ impl LogFile {
                     BResult::Fail
                 };
 
-                static SKIPLIST: [&str;9] = ["Wait", "Year", "Month", "Day", "Hour", "Minute", "Seconde", "DataMatrix", "Part Number" ];
+                static SKIPLIST: [&str; 9] = [
+                    "Wait",
+                    "Year",
+                    "Month",
+                    "Day",
+                    "Hour",
+                    "Minute",
+                    "Seconde",
+                    "DataMatrix",
+                    "Part Number",
+                ];
 
                 let msg;
                 let ttype;
@@ -120,8 +130,6 @@ impl LogFile {
                     };
                 }
 
-
-
                 tests.push(Test {
                     name: tags[1].to_string(),
                     ttype,
@@ -157,14 +165,13 @@ impl LogFile {
                     } else {
                         lines.push(format!("Result: {}", test.msg));
                     }
-                   
 
                     if let TLimit::Lim2(ul, ll) = test.limits {
                         lines.push(format!("High Limit: {:+1.4E}", ul));
                         lines.push(format!("Low Limit: {:+1.4E}", ll));
                     }
 
-                    if test.ttype != TType::Unknown && test.ttype != TType::String  {
+                    if test.ttype != TType::Unknown && test.ttype != TType::String {
                         lines.push(format!(
                             "{} test with unit {}",
                             test.ttype.print(),

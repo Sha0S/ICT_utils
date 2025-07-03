@@ -1,10 +1,8 @@
 extern crate embed_resource;
 
 fn main() {
-
     // None for: "auth_manager"
 
-    
     embed_resource::compile_for("ccl_interlock.rc", &["ccl_interlock"], embed_resource::NONE);
     embed_resource::compile_for("analysis.rc", &["analysis"], embed_resource::NONE);
     embed_resource::compile_for("log_reader.rc", &["log_reader"], embed_resource::NONE);

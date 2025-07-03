@@ -12,7 +12,9 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[tokio::main]
 async fn main() -> eframe::Result {
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "smt_yield=info");
+        unsafe {
+            std::env::set_var("RUST_LOG", "smt_yield=info");
+        }
     }
 
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).

@@ -1,5 +1,5 @@
-use chrono::NaiveDateTime;
 use crate::{SPI_failed_board, SPI_failed_value};
+use chrono::NaiveDateTime;
 
 // For reading boards back from SQL,
 // where they are not combined into a Panel
@@ -187,16 +187,20 @@ impl FailedCompCounter {
     }
 
     pub fn sort(&mut self) {
-        self.inspection_plans.sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
+        self.inspection_plans
+            .sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
 
         for ip in &mut self.inspection_plans {
-            ip.components.sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
+            ip.components
+                .sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
 
             for comp in &mut ip.components {
-                comp.pads.sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
+                comp.pads
+                    .sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
 
                 for pad in &mut comp.pads {
-                    pad.features.sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
+                    pad.features
+                        .sort_by(|a, b| b.count_pseudo_nok.cmp(&a.count_pseudo_nok));
                 }
             }
         }

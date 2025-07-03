@@ -11,10 +11,10 @@ use chrono::{Datelike, NaiveDateTime, NaiveTime, Timelike};
 use log::{debug, error, info, trace, warn};
 use ICT_config::{get_product_for_serial, load_gs_list_for_product, Product};
 
-mod spi_log_converter;
 mod dcdc_fct_log;
 mod kaizen_fct_log;
 mod keysight_log;
+mod spi_log_converter;
 mod test;
 
 // Removes the index from the testname.
@@ -2295,7 +2295,7 @@ impl LogFileHandler {
 
         let file = LogFile::load_panel(p);
 
-        if let Ok(logs) =  file {
+        if let Ok(logs) = file {
             let mut all_ok = true;
             for log in logs {
                 if !self.push(log) {

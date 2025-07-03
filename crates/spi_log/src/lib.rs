@@ -66,7 +66,6 @@ pub struct Panel {
     pub is_failed: bool,         // Status -> IsFailed
 
     // Q: fiducials?
-
     pub boards: Vec<Board>,
 }
 
@@ -142,7 +141,8 @@ impl Panel {
         // Variant is optional!
         let variant = datamodel
             .attribute("Variant")
-            .unwrap_or_default().to_string();
+            .unwrap_or_default()
+            .to_string();
 
         let barcode = datamodel
             .attribute("Barcode")
@@ -301,7 +301,10 @@ impl Board {
             }
         }
 
-        SPI_failed_board{ name: self.name.clone(), failed_components }
+        SPI_failed_board {
+            name: self.name.clone(),
+            failed_components,
+        }
     }
 }
 
@@ -373,7 +376,9 @@ impl Component {
     }
 
     fn generate_failed_component(&self) -> Option<SPI_failed_component> {
-        if !self.inspection_failed { return None;}
+        if !self.inspection_failed {
+            return None;
+        }
 
         let mut failed_pads = Vec::new();
 
@@ -384,7 +389,11 @@ impl Component {
         }
 
         let pseudo = !self.is_failed;
-        Some(SPI_failed_component { name: self.name.clone(), pseudo, failed_pads})
+        Some(SPI_failed_component {
+            name: self.name.clone(),
+            pseudo,
+            failed_pads,
+        })
     }
 }
 
@@ -405,8 +414,6 @@ impl Pad {
             .attribute("Type")
             .context("Attribute 'Type' missing from Solder!")?
             .to_string();
-
-
 
         let mut features = Vec::new();
         let mut is_failed = None;
@@ -435,7 +442,9 @@ impl Pad {
 
                 "Features" => {
                     for feature in child.children() {
-                        if feature.tag_name().name() != "Feature" { continue; }
+                        if feature.tag_name().name() != "Feature" {
+                            continue;
+                        }
                         features.push(Feature::load(feature, only_fails)?);
                     }
                 }
@@ -451,7 +460,11 @@ impl Pad {
             == "true";
 
         Ok(Pad {
-            name: if let Some(s) = name_striped { s.to_string() } else {name},
+            name: if let Some(s) = name_striped {
+                s.to_string()
+            } else {
+                name
+            },
             pad_type,
             inspection_failed,
             is_failed,
@@ -460,7 +473,9 @@ impl Pad {
     }
 
     fn generate_failed_pad(&self) -> Option<SPI_failed_pad> {
-        if !self.inspection_failed { return None;}
+        if !self.inspection_failed {
+            return None;
+        }
 
         let mut failed_features = Vec::new();
 
@@ -471,14 +486,18 @@ impl Pad {
         }
 
         let pseudo = !self.is_failed;
-        Some(SPI_failed_pad { name: self.name.clone(),pseudo, failed_features })
+        Some(SPI_failed_pad {
+            name: self.name.clone(),
+            pseudo,
+            failed_features,
+        })
     }
 }
 
 impl Feature {
     fn load(node: Node<'_, '_>, only_fails: bool) -> Result<Self> {
         if node.tag_name().name() != "Feature" {
-            error_and_bail!("Node is not a Feature node! {}", node.tag_name().name() );
+            error_and_bail!("Node is not a Feature node! {}", node.tag_name().name());
         }
 
         let name = node
@@ -515,7 +534,9 @@ impl Feature {
 
                 "Values" => {
                     for value_node in child.children() {
-                        if value_node.is_text() {continue;}
+                        if value_node.is_text() {
+                            continue;
+                        }
 
                         let v_name = value_node
                             .attribute("Name")
@@ -527,10 +548,7 @@ impl Feature {
                             .context("Attribute 'Value' missing from Value!")?
                             .parse::<f32>()?;
 
-                        let unit = value_node
-                            .attribute("Unit")
-                            .unwrap_or_default()
-                            .to_string();
+                        let unit = value_node.attribute("Unit").unwrap_or_default().to_string();
 
                         // "Template=Atom.Classification.Enhanced1DWith2Thresholds÷ThresholdLow=50÷ThresholdUpper=150÷WarningThresholdDelta=10÷CompareMode=0;between the thresholds"
                         // Name="DisplacementX" | "DisplacementY" ->
@@ -544,7 +562,8 @@ impl Feature {
                             match v_name.as_str() {
                                 "DisplacementX" => {
                                     let ul_str = th_parts
-                                        .iter().find(|f| f.starts_with("ThresholdRectWidth"))
+                                        .iter()
+                                        .find(|f| f.starts_with("ThresholdRectWidth"))
                                         .context("ThresholdRectWidth missing!")?;
                                     let ul_val = ul_str
                                         .split_once('=')
@@ -555,7 +574,8 @@ impl Feature {
 
                                 "DisplacementY" => {
                                     let ul_str = th_parts
-                                        .iter().find(|f| f.starts_with("ThresholdRectHeight"))
+                                        .iter()
+                                        .find(|f| f.starts_with("ThresholdRectHeight"))
                                         .context("ThresholdRectHeight missing!")?;
                                     let ul_val = ul_str
                                         .split_once('=')
@@ -566,16 +586,17 @@ impl Feature {
 
                                 _ => {
                                     let ul_str = th_parts
-                                        .iter().find(|f| f.starts_with("ThresholdUpper"))
+                                        .iter()
+                                        .find(|f| f.starts_with("ThresholdUpper"))
                                         .context("ThresholdUpper missing!")?;
                                     let ul_val = ul_str
                                         .split_once('=')
                                         .context("ThresholdUpper: missing '=' sign!")?;
                                     ul = ul_val.1.parse::<i32>()?;
 
-                                    
                                     let ll_str = th_parts
-                                        .iter().find(|f| f.starts_with("ThresholdLow"))
+                                        .iter()
+                                        .find(|f| f.starts_with("ThresholdLow"))
                                         .context("ThresholdLow missing!")?;
                                     let ll_val = ll_str
                                         .split_once('=')
@@ -609,7 +630,11 @@ impl Feature {
             == "true";
 
         Ok(Feature {
-            name: if let Some(s) = name_striped { s.to_string() } else { name },
+            name: if let Some(s) = name_striped {
+                s.to_string()
+            } else {
+                name
+            },
             inspection_failed,
             is_failed,
             values,
@@ -617,36 +642,48 @@ impl Feature {
     }
 
     fn generate_failed_feature(&self) -> Option<SPI_failed_feature> {
-        if !self.inspection_failed { return None;}
+        if !self.inspection_failed {
+            return None;
+        }
 
         let mut failed_values = Vec::new();
         let pseudo = !self.is_failed;
 
         for value in &self.values {
-            if let Some((ll,ul)) = value.thresholds {
+            if let Some((ll, ul)) = value.thresholds {
                 let v = value.value.round() as i32;
                 if v <= ll || v >= ul {
-                    failed_values.push(SPI_failed_value { name: value.name.clone(), value: value.value, limits: (ll,ul) });
+                    failed_values.push(SPI_failed_value {
+                        name: value.name.clone(),
+                        value: value.value,
+                        limits: (ll, ul),
+                    });
                 }
             }
         }
 
-        Some(SPI_failed_feature { name: self.name.clone(),pseudo, failed_values })
+        Some(SPI_failed_feature {
+            name: self.name.clone(),
+            pseudo,
+            failed_values,
+        })
     }
 }
-
 
 // Stores only the failed positions for a board
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SPI_failed_board {
     pub name: String,
-    pub failed_components: Vec<SPI_failed_component>
+    pub failed_components: Vec<SPI_failed_component>,
 }
 
 impl SPI_failed_board {
     pub fn strip(&self) -> Self {
-        SPI_failed_board { name: self.name.clone(), failed_components: Vec::new() }
+        SPI_failed_board {
+            name: self.name.clone(),
+            failed_components: Vec::new(),
+        }
     }
 }
 
@@ -654,31 +691,29 @@ impl SPI_failed_board {
 pub struct SPI_failed_component {
     pub name: String,
     pub pseudo: bool,
-    pub failed_pads: Vec<SPI_failed_pad>
+    pub failed_pads: Vec<SPI_failed_pad>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SPI_failed_pad {
     pub name: String,
     pub pseudo: bool,
-    pub failed_features: Vec<SPI_failed_feature>
+    pub failed_features: Vec<SPI_failed_feature>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SPI_failed_feature {
     pub name: String,
     pub pseudo: bool,
-    pub failed_values: Vec<SPI_failed_value>
+    pub failed_values: Vec<SPI_failed_value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SPI_failed_value {
     pub name: String,
     pub value: f32,
-    pub limits: (i32, i32)
+    pub limits: (i32, i32),
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -695,9 +730,11 @@ mod tests {
     fn load_log() {
         let spi_log = Panel::load(".\\test_files\\B828853_TOP.xml", true).unwrap();
 
-
         for board in &spi_log.boards {
-            info!("{} - {} - {}", board.name, board.barcode, board.inspection_failed);
+            info!(
+                "{} - {} - {}",
+                board.name, board.barcode, board.inspection_failed
+            );
             let failures = board.generate_failed_components_list();
             for comp in &failures.failed_components {
                 info!("\t{}", comp.name);
@@ -706,7 +743,10 @@ mod tests {
                     for feature in &pad.failed_features {
                         info!("\t\t\t{}", feature.name);
                         for value in &feature.failed_values {
-                            info!("\t\t\t\t{} - {} < {} < {}", value.name, value.limits.0, value.value, value.limits.1);
+                            info!(
+                                "\t\t\t\t{} - {} < {} < {}",
+                                value.name, value.limits.0, value.value, value.limits.1
+                            );
                         }
                     }
                 }
